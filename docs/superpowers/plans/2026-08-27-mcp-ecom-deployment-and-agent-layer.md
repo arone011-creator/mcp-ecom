@@ -49,6 +49,14 @@ Verified by reading upstream at commit `e698ffa`. These are why the tasks below 
 14. `next.config.mjs:3` already sets `output: 'standalone'`, and `docker/Dockerfile` exists — Railway-compatible as-is.
 15. `prisma/seed.ts:365` seeds an Order whose `status` defaults to `PENDING`, which is cancellable — useful for the M4 agent demo.
 
+**Found during Task 2, by running the app against a real database — not predicted from reading:**
+
+16. **`/search` returns HTTP 500.** `app/(store)/search/page.tsx:245` is a Server Component passing `onClick={() => {...}}` to a Button client component: `Event handlers cannot be passed to Client Component props`. Search is broken in the repo as shipped. This is not cosmetic — M1's exit criteria require search to work, and two of the four M4 agent workflows depend on product search. Fixed in Task 6b.
+17. **`searchParams` and `params` are accessed synchronously** in `app/(store)/search/page.tsx` (lines 30, 63) and `app/(store)/products/[slug]/page.tsx`. In Next.js 15 these are Promises; sync access currently logs an error but still renders, so `/products/[slug]` returns 200. It will become fatal on the next major. Fixed in Task 6b.
+18. **Confirmed empirically:** after `migrate deploy` + `db:seed` against Supabase, `select email, (password is not null) from users` returns `false` for both users while the seed prints `Password: admin123`. Finding 3 verified against a live database, not inferred.
+19. The Supabase project runs **Postgres 17**, not the 15 the upstream README claims. Prisma 5.22 handles it; no action needed.
+20. Prisma 5.22 → 8.0.0-rc is available. **Deliberately not upgrading in M1** — a major ORM bump mid-repair would invalidate the scorecard baseline for no benefit. Tech debt, revisit after M2.
+
 ---
 
 ## File Structure
@@ -1194,6 +1202,204 @@ Expected: 5 tests PASS, `tsc --noEmit` exits 0. If typecheck reports a missing m
 ```bash
 git add -A
 git commit -m "refactor: extract safe cancelOrder, remove stripe and unauthorized order actions"
+```
+
+## Task 6b: Fix the broken search page and the Next 15 async params
+
+Discovered by running the app in Task 2, not by reading it (findings 16 and 17). `/search` returns 500 today. M1 cannot exit without this, and two M4 agent workflows depend on product search.
+
+**Files:**
+- Modify: `app/(store)/search/page.tsx:16-24,26-29,49-53,239-257`
+- Modify: `app/(store)/products/[slug]/page.tsx:20-29,60-61`
+- Modify: `app/(store)/category/[slug]/page.tsx:19`
+- Modify: `app/(account)/orders/[id]/page.tsx:17`
+- Test: `tests/unit/rsc-boundaries.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Async Server Components can't be rendered by React Testing Library, so this is a source-level guard in the same style as the seed and roles tests. The real proof is the HTTP check in Step 5.
+
+```typescript
+// tests/unit/rsc-boundaries.test.ts
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const SERVER_PAGES = [
+  'app/(store)/search/page.tsx',
+  'app/(store)/products/[slug]/page.tsx',
+  'app/(store)/category/[slug]/page.tsx',
+  'app/(account)/orders/[id]/page.tsx',
+];
+
+function read(path: string): string {
+  return readFileSync(join(process.cwd(), path), 'utf-8');
+}
+
+describe('server component boundaries', () => {
+  it.each(SERVER_PAGES)('%s passes no event handlers', path => {
+    const source = read(path);
+    if (source.includes("'use client'")) return;
+    expect(source).not.toMatch(/\bon[A-Z][a-zA-Z]*=\{/);
+  });
+
+  it.each(SERVER_PAGES)('%s types its dynamic props as Promises', path => {
+    const source = read(path);
+    if (/\bparams:/.test(source)) {
+      expect(source).toMatch(/params:\s*Promise</);
+    }
+    if (/\bsearchParams:/.test(source)) {
+      expect(source).toMatch(/searchParams:\s*Promise</);
+    }
+  });
+
+  it('search page awaits searchParams before reading properties', () => {
+    const source = read('app/(store)/search/page.tsx');
+    expect(source).toMatch(/await\s+searchParams/);
+    expect(source).not.toMatch(/searchParams\.q\b/);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx jest tests/unit/rsc-boundaries.test.ts`
+Expected: FAIL — the search page has `onClick={`, all four type `params`/`searchParams` as plain objects, and the search page reads `searchParams.q` directly.
+
+- [ ] **Step 3: Replace the onClick button with the pattern the file already uses**
+
+`app/(store)/search/page.tsx` lines 239–257 render a "clear search" button using `onClick` and raw DOM manipulation. Twenty lines further down the same file already solves this with `asChild` + `Link`. Use that — clearing the query is just navigation to `/search` with no parameters, and it needs no client component at all.
+
+Replace lines 239–257 (the whole `{query && ( <Button ... onClick={...}> ... </Button> )}` block) with:
+
+```tsx
+              {query && (
+                <Button
+                  asChild
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1 h-8 w-8 p-0"
+                >
+                  <Link href="/search" aria-label="Clear search">
+                    <X className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+```
+
+`Link` and `X` are already imported at the top of the file. This also fixes an accessibility gap — the original button had no accessible name.
+
+- [ ] **Step 4: Make the dynamic props Promises and await them**
+
+In `app/(store)/search/page.tsx`, change the interface at lines 16–24:
+
+```tsx
+interface SearchPageProps {
+  searchParams: Promise<{
+    q?: string;
+    sort?: string;
+    category?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    page?: string;
+  }>;
+}
+
+type ResolvedSearchParams = Awaited<SearchPageProps['searchParams']>;
+```
+
+In `generateMetadata`, await before reading:
+
+```tsx
+export async function generateMetadata({
+  searchParams,
+}: SearchPageProps): Promise<Metadata> {
+  const { q } = await searchParams;
+  const query = q || '';
+```
+
+Change `SearchResults` to take the already-resolved object:
+
+```tsx
+async function SearchResults({
+  searchParams,
+}: {
+  searchParams: ResolvedSearchParams;
+}) {
+```
+
+Its body then works unchanged — it is reading a plain object by that point.
+
+In the default export, await once and pass the resolved value down. Find `export default async function SearchPage({ searchParams }: SearchPageProps)` and add as its first line:
+
+```tsx
+  const resolvedSearchParams = await searchParams;
+```
+
+Then replace every remaining `searchParams` reference in that function body with `resolvedSearchParams` — including the `{...searchParams}` spreads inside the `new URLSearchParams({...})` calls around lines 300–330, and the `<SearchResults searchParams={searchParams} />` near line 345. Verify none are left:
+
+```bash
+grep -n "searchParams" "app/(store)/search/page.tsx"
+```
+
+Expected: matches only in the interface, the `await searchParams` lines, the prop type, and `resolvedSearchParams` assignments — no bare `searchParams.` property reads.
+
+- [ ] **Step 5: Apply the same treatment to the three other dynamic routes**
+
+Each declares `params: { ... }` and reads `params.slug` or `params.id` synchronously. For each of `app/(store)/products/[slug]/page.tsx`, `app/(store)/category/[slug]/page.tsx`, and `app/(account)/orders/[id]/page.tsx`:
+
+Change the interface to wrap the object in `Promise<>`:
+
+```tsx
+interface ProductPageProps {
+  params: Promise<{
+    slug: string;
+  }>;
+}
+```
+
+Then in both `generateMetadata` and the default export, destructure with await as the first statement:
+
+```tsx
+  const { slug } = await params;
+```
+
+and replace `params.slug` with `slug` throughout. For the orders page the field is `id`, not `slug`.
+
+- [ ] **Step 6: Run tests and typecheck**
+
+```bash
+npx jest tests/unit/rsc-boundaries.test.ts
+npm run type-check
+```
+
+Expected: PASS, and `tsc --noEmit` exits 0. TypeScript will point at any `params.slug` read you missed, since the type is now a Promise.
+
+- [ ] **Step 7: Verify over HTTP — this is the real proof**
+
+With `npm run dev` running:
+
+```bash
+for R in "/" "/search?q=iphone" "/search" "/products/iphone-15-pro" "/cart"; do
+  printf "  %-28s HTTP %s\n" "$R" "$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$R")"
+done
+```
+
+Expected: all `200`. Before this task `/search?q=iphone` returned `500`.
+
+Then confirm the dev log is clean of the two error classes:
+
+```bash
+grep -cE "Event handlers cannot be passed|should be awaited before using" <dev-server-log>
+```
+
+Expected: `0` new occurrences after a fresh request.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add "app/(store)/search/page.tsx" "app/(store)/products/[slug]/page.tsx" "app/(store)/category/[slug]/page.tsx" "app/(account)/orders/[id]/page.tsx" tests/unit/rsc-boundaries.test.ts
+git commit -m "fix(search): remove server-component event handler and await dynamic params"
 ```
 
 ## Task 7: Build the dummy checkout action
