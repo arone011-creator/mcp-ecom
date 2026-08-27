@@ -1,0 +1,514 @@
+AGENTIC CHAT LAYER OVER EXISTING E-COMMERCE APP
+Implementation Plan v2 — Updated after architecture brainstorm
+==================================================================
+
+CONTEXT
+-------
+This updates the original MCP + agent POC plan. The core adapter
+philosophy from v1 is unchanged: MCP wraps the existing backend, it
+does not duplicate business logic, and the agent is the AI-access
+layer, not a second backend.
+
+Two decisions came out of this round of review that reshape the plan:
+
+1. The build is sequenced into three explicit phases instead of one
+   continuous build — MCP, then a Single Agent, then a Multi-Agent
+   refactor. Each phase is a working, demoable checkpoint on its own.
+
+2. The "Agent" is no longer a single monolith. Phase 3 splits it into
+   a Supervisor + four domain-specialist agents (Product, Cart,
+   Order, Returns), orchestrated with LangGraph, chosen specifically
+   for model flexibility (no vendor lock-in to one LLM provider).
+
+==================================================================
+PHASE 1 — MCP LAYER
+==================================================================
+
+Goal: prove the AI-access layer works, independent of any agent.
+
+1.1 Core principle
+    MCP Server -> API Client -> Existing Backend API
+    NOT: MCP Server -> Database directly.
+    Business logic (e.g. "is this return allowed?") stays in the
+    existing backend. MCP never re-implements it.
+
+1.2 Capability mapping (do this before writing any MCP code)
+
+    Existing capability     MCP tool                      Risk
+    ---------------------- ----------------------------- --------
+    Search products         search_products                Low
+    Get product              get_product                    Low
+    Check inventory          check_inventory                Low
+    Get orders                get_orders                     Low
+    Get order                  get_order                      Low
+    Add cart item              add_to_cart                    Low
+    Check return eligibility   check_return_eligibility       Low
+    Create return               create_return                  Medium
+    Cancel order                 cancel_order                   High
+    Place order                   place_order                    High
+    Process payment                 process_payment                High
+
+    Rule: expose business-level capabilities, not HTTP endpoints.
+    "check_return_eligibility" is a good tool; "GET /orders/{id}/
+    return-check" is an implementation detail and should not be a
+    1:1 tool.
+
+1.3 MCP server structure (Python + FastMCP + httpx + Pydantic)
+
+    mcp-server/
+    |-- server.py
+    |-- tools/
+    |   |-- products.py
+    |   |-- orders.py
+    |   |-- cart.py
+    |   `-- returns.py
+    |-- clients/
+    |   `-- ecommerce_api.py
+    `-- models/
+        `-- schemas.py
+
+    Each tools/*.py file becomes the tool surface for one Phase-3
+    specialist agent later (products.py -> Product agent, etc.) —
+    this folder boundary is intentional and is reused, not
+    coincidental.
+
+1.4 Identity & auth
+    The MCP server derives the authenticated user from the
+    session/token — it never trusts a user_id supplied by the LLM.
+    get_orders() resolves to get_orders(authenticated_user=user_123)
+    server-side, not via an LLM-provided argument.
+
+1.5 Server-side risk enforcement (NEW — closes a gap from v1)
+    v1 treated the risk tiers (low/medium/high) as a convention the
+    agent was expected to respect. That is not a real security
+    boundary — an agent that is prompt-injected (e.g. via malicious
+    text embedded in a product review returned by a tool) could
+    otherwise talk itself past an approval step.
+    Decision: medium/high-risk tools must be enforced at the MCP
+    server, not just trusted to agent behavior. A high-risk tool
+    call without a valid approval token should fail or return
+    "confirmation_required" regardless of what the agent intended.
+
+1.6 Known risk to track: prompt injection via tool output
+    Any tool that returns free-text content sourced from users or
+    third parties (product reviews, descriptions) is a potential
+    injection vector into the agent's context. Flagged as an open
+    item — needs a mitigation pass (e.g. sanitization, treating tool
+    output as data, not instructions) before this goes past demo
+    scope.
+
+1.7 Test MCP independently
+    Prove each tool end-to-end via a bare MCP client before any
+    agent exists:
+        MCP Client -> search_products() -> MCP Server -> Existing
+        API -> Correct result
+    Do the same for get_order() and create_return(). This isolates
+    "is it the MCP layer or the agent" when something breaks later.
+
+Exit criteria for Phase 1: every tool in the capability map is
+callable via a bare MCP client and returns correct, user-scoped
+data. Risk tiers are enforced server-side, not just documented.
+
+==================================================================
+PHASE 2 — SINGLE AGENT
+==================================================================
+
+Goal: prove the tool contracts and the agentic UX patterns work,
+before adding the complexity of multi-agent orchestration. One
+agent, full toolbox, connected to the Phase 1 MCP server.
+
+2.1 Why single agent first (explicit decision)
+    Multi-agent orchestration is being deferred to Phase 3 on
+    purpose. Building it first would confound two unknowns at once —
+    "do my tools/workflows work" and "does my orchestration layer
+    work." Single agent isolates the first question.
+
+2.2 UX capabilities to build (condensed from the 7-capability
+    discussion)
+    1. Natural-language intent recognition — understand the ask
+       before executing anything.
+    2. Ask for missing info only when necessary, and prefer
+       structured choices over free-text prompts ("Which order?"
+       with selectable cards, not "please provide your order ID").
+    3. Show the agent's plan for multi-step requests, and update it
+       live as steps complete — visibility without exposing raw
+       chain-of-thought.
+    4. Human approval gating, driven by the risk tiers from Phase 1
+       (see 2.3).
+    5. Rich responses — product cards, order cards, not just prose.
+    6. Workflow progress indicators for longer flows (e.g. a return:
+       identify order -> check eligibility -> create return ->
+       schedule pickup -> refund), including failure states with
+       explicit recovery options (Retry / Choose another date /
+       Cancel).
+    7. Persistent, visible context — the agent remembers "the second
+       order" without the user repeating an order ID, and the
+       current context (customer, order, action) is shown, not just
+       inferred silently.
+
+2.3 Risk tier -> agent behavior
+    Low     -> auto-execute, no confirmation needed.
+    Medium  -> execute, but surface it as an informational event
+               ("Added to cart"), not a blocking prompt.
+    High    -> block and require explicit confirmation before
+               calling the tool ("I've found the best laptop for
+               Rs.72,999. Shall I add it to your cart?" with a
+               concrete action button, not a generic "proceed?").
+
+2.4 Agent Events streaming
+    The chat UI consumes structured events, not raw text:
+        tool_started, tool_completed, approval_required
+    This is the plumbing that later becomes the interrupt() payload
+    in Phase 3 — designing it now avoids rework.
+
+2.5 Workflows to validate end-to-end in this phase
+    - "What did I order recently?" (single tool call)
+    - "Return my Nike shoes." (multi-step: get_orders -> get_order ->
+      check_return_eligibility -> confirm -> create_return)
+    - "Find me headphones under Rs.10,000 with 4+ rating and add the
+      best one to my cart." (search -> filter -> check_inventory ->
+      recommend -> approval -> add_to_cart)
+    - Showcase workflow: "I want to buy running shoes under
+      Rs.7,000, rated above 4.3, size 10, deliverable before Friday.
+      Show me your best option. Don't add anything to my cart until
+      I approve." (planning + multiple tools + constraints + state +
+      recommendation + human approval, all in one ask)
+
+Exit criteria for Phase 2: all four workflows above complete
+correctly through a single agent, approval gating behaves per the
+risk tiers, and the chat UI is driven by structured agent events
+rather than parsed text. This phase is a legitimate, demoable
+product on its own even if Phase 3 slipped.
+
+==================================================================
+PHASE 3 — MULTI AGENT
+==================================================================
+
+Goal: refactor the single agent into a Supervisor + domain
+specialists, without changing the MCP layer or the workflows proven
+in Phase 2.
+
+3.1 Why domain specialists
+    Splitting along the same boundary the MCP folder structure
+    already has (products.py, orders.py, cart.py, returns.py) keeps
+    each agent's prompt small and focused, makes each one easier to
+    test/eval in isolation, and gives a stronger engineering story
+    ("each business domain has its own specialized agent,
+    coordinated by an orchestrator") than one agent with a growing
+    toolbox.
+
+3.2 Architecture
+
+                              USER
+                                |
+                                v
+                         +-------------+
+                         | SUPERVISOR  |  <- owns the conversation,
+                         |   AGENT     |     routes work, is the
+                         +------+------+     ONLY place that gates
+                                |             approvals
+        +----------+-----------+-----------+-----------+
+        v          v                       v           v
+    +--------+ +--------+             +--------+   +--------+
+    |PRODUCT | |  CART  |             | ORDER  |   |RETURNS |
+    | AGENT  | | AGENT  |             | AGENT  |   | AGENT  |
+    +--------+ +--------+             +--------+   +--------+
+    search_      get_cart              get_orders    check_return_
+    products     add_to_cart           get_order     eligibility
+    get_product  remove_from_cart      cancel_order  create_return
+    check_                                           get_return_
+    inventory                                        status
+
+    Rules:
+    - Specialists never talk to each other directly. Every hop goes
+      through the Supervisor.
+    - Specialists propose actions (tool name + args); they do not
+      execute medium/high-risk tools themselves. Execution authority
+      for anything above "low risk" sits only with the Supervisor.
+      This keeps exactly one enforcement choke point instead of
+      four, and sidesteps relying on interrupt() propagation through
+      nested specialist subgraphs (unverified as of this writing —
+      flagged in Open Items below).
+
+3.3 Framework: LangGraph
+    Chosen over CrewAI, AutoGen, OpenAI Agents SDK, Claude Agent SDK,
+    and hand-rolled, specifically because:
+    - It has a documented, first-class "supervisor" multi-agent
+      pattern matching the topology above.
+    - Its interrupt()/Command(resume=...) primitive solves the
+      pause-for-approval / resume problem natively (see 3.4) rather
+      than requiring it to be hand-built.
+    - It streams node/tool-level events natively, matching the
+      Agent Events design from Phase 2.
+    - It has an official MCP adapter for scoping tools per agent.
+    - Critically: it is not tied to one model provider. This was the
+      deciding factor over Claude's own Agent SDK, which is a
+      strong fit technically (native MCP, and a canUseTool callback
+      that maps very well to the risk-tier gate) but is Claude-only.
+      Given the priority is avoiding vendor lock-in, LangGraph wins
+      on that axis even though it has a steeper learning curve and
+      the Agent SDK's approval callback is arguably a more precise
+      fit for the exact risk-gate mechanic.
+    Trade-off accepted: real learning curve if the team hasn't used
+    LangGraph before; the graph/state-machine mental model takes
+    time to get comfortable with.
+
+3.4 Interrupt / approval strategy
+    interrupt() is a general "pause the graph and ask the human
+    something" primitive — not just an approval mechanism. It
+    unifies four things that were previously described separately:
+    missing-info prompts, disambiguation ("which of two Nike
+    orders?"), high-risk approval, and failure recovery (Retry /
+    Choose another date / Cancel). All four become the same code
+    path with a different payload shape.
+
+    Placement: the interrupt() call lives inside the Supervisor,
+    not inside a specialist. A specialist returns a proposed action;
+    the Supervisor checks it against the Phase 1 capability-map risk
+    tier and either executes it directly (low), executes and informs
+    (medium), or calls interrupt(payload) and blocks (high).
+
+    Mechanics to respect when implementing the gate function:
+    - Requires a checkpointer — this is what makes pause/resume
+      possible at all.
+    - On resume via Command(resume=<value>), any code in that node
+      BEFORE the interrupt() call re-runs; earlier nodes do not.
+      Keep everything before the interrupt() line side-effect-free
+      (reads/re-derivable checks only) — do not put non-idempotent
+      calls (payment pre-auth, counters) before that line.
+    - Thread ID = the conversation/session ID. This also gives
+      persistent context (2.2 point 7) for free, since checkpointed
+      state holds full history and survives a resume days later.
+    - LangGraph will happily leave a thread paused indefinitely if a
+      user abandons an approval — there's no built-in timeout. Add
+      an app-level expiry policy on top (e.g. "this action expired,
+      please ask again").
+
+3.5 Context-passing discipline
+    The Supervisor decides what slice of context each specialist
+    actually needs — the Returns agent needs user_id and the order
+    in question, not the last 20 messages about laptop shopping.
+    Passing full history to every specialist call is the main way
+    this architecture quietly becomes slow and expensive; treat this
+    as a design constraint, not an afterthought.
+
+3.6 Trade-offs to watch, going into this phase
+    - Latency/cost: trivial queries ("what's my order status") now
+      cost at least two LLM hops (Supervisor -> Order agent -> back)
+      instead of one. Acceptable for the showcase workflow, wasteful
+      for simple lookups — consider letting the Supervisor
+      short-circuit simple single-domain queries without a full
+      specialist round-trip.
+    - Vendor-flexibility only holds if prompts and tool schemas stay
+      in config rather than being tuned implicitly to one model's
+      quirks. A provider swap should be "change one config block,"
+      not "rewrite four agents."
+
+3.7 Open validation item
+    Whether interrupt() called from inside a nested specialist
+    subgraph correctly propagates to and resumes at the top-level
+    thread was not confirmed against current LangGraph docs during
+    this review. The 3.2/3.4 design (interrupt only ever called from
+    the Supervisor, never from a specialist) sidesteps needing this
+    to be true — but if that placement changes later, confirm this
+    behavior with a spike first.
+
+Exit criteria for Phase 3: the four workflows validated in Phase 2
+all pass again, now routed through Supervisor + specialists, with
+the same approval behavior, plus one new workflow that specifically
+requires two specialists in sequence (e.g. Return flow: Order agent
+identifies the order, Returns agent handles eligibility/creation) to
+prove the handoff pattern itself.
+
+==================================================================
+OPEN QUESTIONS / RISKS (consolidated)
+==================================================================
+- Prompt injection via tool output (product reviews, descriptions)
+  is not yet mitigated — needs a design pass before beyond-demo use.
+- No eval/regression harness yet for "does the agent pick the right
+  tool" across workflows as prompts evolve.
+- Nested-subgraph interrupt() propagation unconfirmed (see 3.7) —
+  moot as long as 3.2/3.4 placement holds.
+- Demo vs. production framing: this plan is still scoped as a demo/
+  POC (per v1's "keep it extremely simple" guidance) — revisit
+  auth hardening, rate limiting, and observability before any real
+  production commitment.
+
+==================================================================
+APPENDIX A — MULTI-AGENT DESIGN PATTERN REFERENCE
+==================================================================
+Reference this appendix when the final Phase 3 implementation is
+being built — both to confirm the pattern we picked still fits, and
+as a menu if a specific workflow later needs a different pattern
+layered in locally.
+
+A.1 Named patterns, what they're for, and our verdict on each
+
+    Pattern                What it is                  Best for /
+                                                          verdict for us
+    ---------------------- --------------------------- ------------------
+    Supervisor /            One agent owns the           SELECTED. Fits
+    orchestrator-worker     conversation and routes to    distinct domains
+    (hierarchical)          specialists; specialists      (product/cart/
+                            report back, never talk       order/returns)
+                            to each other.                and gives one
+                                                            place to enforce
+                                                            approval gating.
+
+    Pipeline / sequential   Fixed-order chain, each       Not used. Our
+                            agent's output feeds the      workflows branch
+                            next, like an assembly        on user intent,
+                            line.                          not a fixed order.
+
+    Parallel fan-out /      Independent subtasks          Candidate for
+    fan-in                  dispatched at once,           INSIDE a
+                            results merged.                specialist later
+                                                            (e.g. Product
+                                                            agent checking
+                                                            price + rating +
+                                                            delivery
+                                                            concurrently).
+                                                            Not used at the
+                                                            Supervisor level
+                                                            since our
+                                                            specialists are
+                                                            sequentially
+                                                            dependent.
+
+    Debate / actor-critic   One agent proposes, a         Not needed now —
+    (adversarial)           second tries to refute or      our "ground
+                            red-team it; a judge may       truth" is the
+                            decide.                        backend API, not
+                                                            LLM judgment.
+                                                            Revisit only if
+                                                            a future agent
+                                                            starts making
+                                                            judgment calls
+                                                            without an API
+                                                            to check against.
+
+    Planner-executor        One agent decomposes a        Not used in v2,
+    split                   goal into steps; a            but the natural
+                            separate agent executes       next refinement
+                            each step against tools.       if the Supervisor
+                                                            prompt ever gets
+                                                            overloaded doing
+                                                            both planning and
+                                                            approval duty.
+
+    Blackboard /             Agents read/write a           Deliberately
+    shared-state             shared workspace; no          avoided — trades
+                             fixed handoff order,           away the single
+                             whichever agent's              choke-point
+                             trigger fires acts next.       control we need
+                                                             for approvals.
+
+    Group chat /             Agents converse in a          Ruled out — hard
+    conversational           shared thread and              to guarantee
+    (AutoGen-style)          self-organize who               specialists
+                             speaks next.                    won't bypass the
+                                                              Supervisor and
+                                                              talk directly to
+                                                              each other.
+
+    Redundancy / voting      Multiple agents (or           Not needed for
+    (market-based)           multiple runs) attempt          deterministic
+                             the same task; majority          tool calls
+                             vote or judge picks the          (an order either
+                             best answer.                      exists or it
+                                                                doesn't). Could
+                                                                harden
+                                                                genuinely
+                                                                ambiguous
+                                                                judgment calls
+                                                                later (e.g.
+                                                                "is this the
+                                                                best product
+                                                                match").
+
+A.2 Pattern-to-use-case cheat sheet (for future features beyond
+    this POC, or if this architecture gets reused elsewhere)
+    - Transactional, customer-facing apps (this project) ->
+      supervisor + specialists, human-in-the-loop gates.
+    - Research / synthesis tasks -> parallel fan-out feeding a
+      synthesis agent.
+    - Code review / high-stakes decision support -> debate /
+      adversarial, optionally plus voting for redundancy.
+    - Creative ideation / open strategy exploration -> group chat,
+      or a judge panel over N independent attempts.
+    - Ops / monitoring at scale -> blackboard / event-driven, since
+      agents need to react to changing state, not follow a scripted
+      conversation.
+
+A.3 Cross-cutting principles (apply regardless of pattern chosen)
+    - Keep each agent's scope narrow rather than capable-at-
+      everything — matches the Phase 3 specialist boundaries.
+    - Prefer structured, typed handoffs between agents over free-
+      form chat — specialists return proposed actions/results, not
+      prose, to the Supervisor.
+    - Put approval/consequential-action authority at exactly one
+      point in the graph (3.2/3.4) — never duplicate enforcement
+      across agents.
+    - Make individual agent steps idempotent where possible, so
+      retries and interrupt() pauses are safe (see 3.4's "no side
+      effects before the interrupt line" rule).
+    - Instrument per-agent observability/tracing — you need to see
+      which agent did what when a multi-agent chain misbehaves
+      (ties to the Agent Events design in 2.4).
+    - Budget for cost/latency — more agents means more LLM hops;
+      don't route trivial single-domain queries through the full
+      Supervisor -> specialist round trip if it can be short-
+      circuited (see 3.6).
+    - Don't add an agent per tool. Split only where there's a real
+      domain/reasoning boundary, or the coordination overhead buys
+      nothing.
+
+A.4 Reality check: multi-agent is not a reliability lever
+    Worth keeping in view while building Phase 3 so the refactor
+    doesn't get credited with something it isn't responsible for.
+    Claude Code — arguably the most reliable agentic system in this
+    space — is single-agent by default: a simple while-loop (call
+    model, run tool, repeat), with sub-agent delegation used
+    selectively for parallelizable or context-heavy work, not as the
+    default architecture. Its accuracy comes from four things
+    unrelated to agent count:
+    - Agentic search (grep/glob/read the real file, just in time)
+      instead of pre-indexing/RAG — it reads ground truth rather
+      than a retrieved approximation of it.
+    - Tools that are self-contained, error-robust, and unambiguous,
+      with a minimal non-overlapping set — the same principle behind
+      our Phase 1 rule (business-level tools, not raw endpoints).
+    - Context compaction plus structured external memory, so long
+      sessions don't degrade from an ever-growing transcript.
+    - Sub-agents, when used, return a condensed summary (roughly
+      1,000-2,000 tokens) to the coordinator, not their full
+      transcript — the same principle behind 3.5's context-passing
+      discipline.
+    A hard permission system (multiple modes, explicit gating) sits
+    on top as a separate safety layer from the reasoning loop itself
+    — mirrors our risk-tier + interrupt() split between "the agent
+    decides" and "the system enforces."
+
+    Conclusion for this project: Phase 3's move to multi-agent is
+    justified for domain clarity, testability, and the vendor-
+    flexible orchestration story — not because it will make the
+    agent more accurate. Accuracy is earned in Phase 1 (tight,
+    unambiguous tools) and Phase 2 (context and approval discipline)
+    before Phase 3 ever starts. If Phase 3 is rushed while Phase 1/2
+    are still shaky, splitting into multiple agents will not fix
+    that — it will just distribute the same unreliability across
+    more moving parts.
+
+==================================================================
+NEXT STEPS
+==================================================================
+1. Build Phase 1 (MCP layer) against the existing backend; validate
+   every tool independently.
+2. Build Phase 2 (single agent) on top of the same MCP server;
+   validate all four workflows and the approval/event UX.
+3. Refactor into Phase 3 (Supervisor + specialists via LangGraph);
+   re-validate the same workflows plus the two-specialist handoff
+   case. Reference Appendix A to confirm the pattern choice still
+   holds once real implementation details are in hand.
+4. Revisit the prompt-injection and eval-harness open items before
+   treating this as more than a demo.
