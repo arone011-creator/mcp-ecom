@@ -125,3 +125,6 @@ temp/
 *.swp
 *.swo
 *~
+# metrics harness
+coverage/
+metrics/.jest-result.json

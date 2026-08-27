@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "milestone": "m0-upstream",
+      "capturedAt": "2026-08-27T21:09:45.480Z",
+      "commit": "605e989",
+      "tests": {
+        "passed": 167,
+        "failed": 0,
+        "skipped": 12,
+        "total": 179
+      },
+      "coverage": {
+        "statements": 70.89,
+        "branches": 70.58
+      },
+      "typeErrors": 0,
+      "build": {
+        "durationMs": 228342,
+        "standaloneBytes": 80932688
+      },
+      "latency": null,
+      "acceptedRegressions": []
+    }
+  ]
+}

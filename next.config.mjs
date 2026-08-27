@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['@prisma/client', 'bcrypt'],
+  serverExternalPackages: ['@prisma/client', 'bcryptjs'],
   images: {
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
