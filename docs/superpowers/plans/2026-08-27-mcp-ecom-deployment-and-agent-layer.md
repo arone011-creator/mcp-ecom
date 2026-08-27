@@ -56,6 +56,12 @@ Verified by reading upstream at commit `e698ffa`. These are why the tasks below 
 18. **Confirmed empirically:** after `migrate deploy` + `db:seed` against Supabase, `select email, (password is not null) from users` returns `false` for both users while the seed prints `Password: admin123`. Finding 3 verified against a live database, not inferred.
 19. The Supabase project runs **Postgres 17**, not the 15 the upstream README claims. Prisma 5.22 handles it; no action needed.
 20. Prisma 5.22 → 8.0.0-rc is available. **Deliberately not upgrading in M1** — a major ORM bump mid-repair would invalidate the scorecard baseline for no benefit. Tech debt, revisit after M2.
+21. **Never set `NODE_ENV` in an env file.** Next sets it per command — `development` for `next dev`, `production` for `next build`. Hardcoding `NODE_ENV=development` and sourcing that file before `next build` makes Next build for production while loading React's development build, and the build dies prerendering `/404` and `/500` with a misleading `<Html> should not be imported outside of pages/_document`. Next warns `You are using a non-standard "NODE_ENV" value` — **that warning is the diagnosis, not noise.** This cost ~16 builds and six wrong hypotheses during Task 0 because the warning was ignored while the error message was taken at face value.
+22. The upstream production build is **fine**. An earlier draft of these findings claimed it was broken; that was caused by finding 21 and is retracted.
+23. Node 24 was suspected and is **not** implicated. Every failing build under it also carried the bad `NODE_ENV`. `engines` is therefore `">=20"`, not `">=20 <24"`. Node 22 LTS is used locally as a conservative default, not because 24 is known bad.
+24. `@next/font@14.1.0` was installed but never imported (the app uses `next/font/google`). Removed in Task 0 — dead dependency, unrelated to any build failure.
+
+**Debugging lesson, recorded because it generalises:** when a build fails, read the *warnings* in the same output before theorising about the error. A misleading error message plus an ignored warning produced six consecutive wrong hypotheses. Bisecting only helps when the control is verified — three separate bisects here returned false signals because the control was broken in a different way than the subject.
 
 ---
 
@@ -206,6 +212,21 @@ npm run dev
 ```
 
 Open `http://localhost:3000`. Expected: homepage renders with seeded products and images. Then visit `http://localhost:3000/orders` and confirm it redirects to a 404 at `/auth/signin` — this is the documented broken state that Tasks 8 and 10 fix.
+
+- [ ] **Step 5b: Verify the app can actually be built, not just run**
+
+`next dev` never exercises the production build. An app that boots fine in dev can still be undeployable, and this gate exists to catch exactly that before Task 13 discovers it on Railway.
+
+Stop the dev server first — `next dev` and `next build` both write to `.next`.
+
+```bash
+npm run build
+du -sh .next/standalone
+```
+
+Expected: the build completes with a route table, and `.next/standalone` exists at roughly 80MB. If it is absent, the build failed regardless of what the exit code said.
+
+**Do not set `NODE_ENV` when running this.** `.env.local` must not contain a `NODE_ENV` line (see finding 21). If the build fails with `<Html> should not be imported outside of pages/_document`, check the warnings above the error for `non-standard "NODE_ENV" value` before investigating anything else — that message is the actual diagnosis.
 
 - [ ] **Step 6: Commit an env template**
 
