@@ -209,6 +209,7 @@ export const searchProducts = createCachedFunction(
           categoryFilter?: string;
           minPrice?: number;
           maxPrice?: number;
+          minRating?: number;
         },
     filters: any = {}
   ) => {
@@ -225,6 +226,7 @@ export const searchProducts = createCachedFunction(
         category: queryOrOptions.categoryFilter,
         minPrice: queryOrOptions.minPrice,
         maxPrice: queryOrOptions.maxPrice,
+        minRating: queryOrOptions.minRating,
         sortBy: queryOrOptions.sort || 'relevance',
       };
     }
@@ -233,6 +235,7 @@ export const searchProducts = createCachedFunction(
       category,
       minPrice,
       maxPrice,
+      minRating,
       sortBy = 'relevance',
       sortOrder = 'desc',
       page = 1,
@@ -258,6 +261,29 @@ export const searchProducts = createCachedFunction(
       where.price = {};
       if (minPrice !== undefined) where.price.gte = minPrice;
       if (maxPrice !== undefined) where.price.lte = maxPrice;
+    }
+
+    // Rating lives on Review rows, not on Product, so there is nothing to
+    // put in the where clause directly. Resolve the qualifying ids first
+    // and filter on those, rather than taking a page and dropping the
+    // low-rated entries from it afterwards -- that would leave the total
+    // counting products the caller never sees, and return short pages
+    // while matching products sat on later ones.
+    //
+    // Products with no reviews have no rows to average and so are absent
+    // from this list, which is the right answer for a "4 or better" bar.
+    //
+    // The id list is as long as the number of qualifying products. That is
+    // fine for a catalogue this size; a large one would want a
+    // denormalised average on Product instead.
+    if (typeof minRating === 'number') {
+      const qualifying = await prisma.review.groupBy({
+        by: ['productId'],
+        _avg: { rating: true },
+        having: { rating: { _avg: { gte: minRating } } },
+      });
+
+      where.id = { in: qualifying.map(group => group.productId) };
     }
 
     let orderBy: any = { createdAt: 'desc' };

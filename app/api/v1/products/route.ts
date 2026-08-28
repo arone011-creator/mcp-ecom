@@ -50,6 +50,9 @@ export async function GET(req: NextRequest) {
       categoryFilter: params.get('category') ?? undefined,
       minPrice: floatParam(params.get('minPrice')),
       maxPrice: floatParam(params.get('maxPrice')),
+      // Left undefined when absent: a defaulted 0 would read as a filter
+      // and quietly drop every product nobody has reviewed.
+      minRating: floatParam(params.get('minRating')),
     });
 
     return ok({
