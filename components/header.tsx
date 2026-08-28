@@ -11,17 +11,20 @@
 import Link from 'next/link';
 import { ShoppingCart, Search, User } from 'lucide-react';
 import { getCurrentUser } from '@/lib/roles';
-import { getCart } from '@/server/actions/cart';
+import { getCartItemCount } from '@/server/queries/cart';
 import { Button } from '@/components/ui/button';
 
 export async function Header() {
-  // Never let a header failure take down every page that renders it.
-  const [user, cart] = await Promise.all([
+  // getCartItemCount is a single read-only aggregate. The obvious
+  // getCart() would upsert a cart row and fetch every line item on every
+  // page view, purely to render this number (finding 56).
+  //
+  // Both are still guarded: a header failure must not take down every
+  // page that renders it.
+  const [user, itemCount] = await Promise.all([
     getCurrentUser().catch(() => null),
-    getCart().catch(() => ({ itemCount: 0 })),
+    getCartItemCount().catch(() => 0),
   ]);
-
-  const itemCount = cart?.itemCount ?? 0;
 
   return (
     <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
