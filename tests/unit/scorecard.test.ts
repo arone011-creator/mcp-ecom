@@ -126,17 +126,23 @@ describe('compare', () => {
     ]);
   });
 
-  it('tolerates build time within 10% but flags beyond it', () => {
-    const withinBudget = entry({
-      build: { durationMs: 66000, standaloneBytes: 100_000_000 },
+  it('records build duration but never gates on it', () => {
+    // Measured three times on identical code: 195s, 220s, 255s -- a 30%
+    // spread, and the slowest run was on an otherwise idle machine. A
+    // metric whose noise exceeds its own tolerance can only produce false
+    // alarms, so it is reported and not gated (finding 51).
+    const muchSlower = entry({
+      build: { durationMs: 600000, standaloneBytes: 100_000_000 },
     });
-    expect(compare(entry(), withinBudget)).toEqual([]);
+    expect(compare(entry(), muchSlower)).toEqual([]);
+  });
 
-    const overBudget = entry({
-      build: { durationMs: 67000, standaloneBytes: 100_000_000 },
+  it('still gates on bundle size, which is stable', () => {
+    const bloated = entry({
+      build: { durationMs: 60000, standaloneBytes: 120_000_000 },
     });
-    expect(compare(entry(), overBudget)).toEqual([
-      expect.stringContaining('build.durationMs'),
+    expect(compare(entry(), bloated)).toEqual([
+      expect.stringContaining('build.standaloneBytes'),
     ]);
   });
 

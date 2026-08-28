@@ -130,12 +130,11 @@ export function compare(previous: Entry | undefined, current: Entry): string[] {
 
   coverageRegressed('statements', 'statementsCovered', 'statementsTotal');
   coverageRegressed('branches', 'branchesCovered', 'branchesTotal');
-  if (current.build.durationMs > previous.build.durationMs * BUILD_TOLERANCE) {
-    flag(
-      'build.durationMs',
-      `build.durationMs: ${previous.build.durationMs} -> ${current.build.durationMs}`
-    );
-  }
+  // build.durationMs is recorded but deliberately not gated. Measured
+  // three times on identical code it came in at 195s, 220s and 255s -- a
+  // 30% spread, with the slowest run on an otherwise idle machine. Its
+  // noise exceeds any tolerance worth setting, so gating on it only
+  // produces false alarms. standaloneBytes below is stable and is gated.
   if (
     current.build.standaloneBytes >
     previous.build.standaloneBytes * BUILD_TOLERANCE

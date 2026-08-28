@@ -78,6 +78,45 @@
       },
       "latency": null,
       "acceptedRegressions": []
+    },
+    {
+      "milestone": "m1-deployed",
+      "capturedAt": "2026-08-28T18:27:28.994Z",
+      "commit": "f079d19",
+      "tests": {
+        "passed": 227,
+        "failed": 0,
+        "skipped": 12,
+        "total": 239
+      },
+      "coverage": {
+        "statements": 68.78,
+        "branches": 63.9,
+        "statementsCovered": 282,
+        "statementsTotal": 410,
+        "branchesCovered": 85,
+        "branchesTotal": 133
+      },
+      "typeErrors": 0,
+      "build": {
+        "durationMs": 208497,
+        "standaloneBytes": 81114579
+      },
+      "latency": {
+        "/": {
+          "p50": 283,
+          "p95": 487
+        },
+        "/search?q=iphone": {
+          "p50": 265,
+          "p95": 465
+        },
+        "/api/v1/products?q=shoes&limit=5": {
+          "p50": 263,
+          "p95": 284
+        }
+      },
+      "acceptedRegressions": []
     }
   ]
 }
