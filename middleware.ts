@@ -145,8 +145,13 @@ export async function middleware(request: NextRequest) {
     process.env.NODE_ENV === 'production' &&
     request.headers.get('x-forwarded-proto') !== 'https'
   ) {
+    // `search` included deliberately: rebuilding from the pathname alone
+    // dropped every query parameter, so an upgraded request arrived with
+    // its filters missing and returned a cheerful 200 full of the wrong
+    // results. Railway terminates TLS and sets x-forwarded-proto, so this
+    // branch does not fire in production -- which is why it went unnoticed.
     return NextResponse.redirect(
-      `https://${request.headers.get('host')}${request.nextUrl.pathname}`,
+      `https://${request.headers.get('host')}${request.nextUrl.pathname}${request.nextUrl.search}`,
       301
     );
   }

@@ -14,14 +14,26 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // cancelOrderFor reports failures as prose. Mapping them here keeps the
-// HTTP vocabulary in the HTTP layer -- and keeps 409 distinct from 403,
+// HTTP vocabulary in the HTTP layer -- and keeps 409 distinct from 404,
 // which matters to an agent deciding whether to retry or to give up.
+//
+// Unauthorized deliberately becomes 404 rather than 403. The GET route
+// refuses to confirm that an order id is real when the caller does not own
+// it; answering 403 here would confirm it, and there is no value in
+// closing that door on one route while leaving it open on another against
+// the same ids.
 const STATUS_FOR_ERROR: Record<string, number> = {
   'Authentication required': 401,
-  Unauthorized: 403,
+  Unauthorized: 404,
   'Order not found': 404,
   'Order cannot be cancelled': 409,
   'Failed to cancel order': 500,
+};
+
+// ...and the body has to match too, or the status is the only thing that
+// was ever hiding anything.
+const BODY_FOR_ERROR: Record<string, string> = {
+  Unauthorized: 'Order not found',
 };
 
 export async function POST(
@@ -40,7 +52,10 @@ export async function POST(
     const result = await cancelOrderFor(user.id, id);
 
     if (!result.success) {
-      return fail(STATUS_FOR_ERROR[result.error] ?? 400, result.error);
+      return fail(
+        STATUS_FOR_ERROR[result.error] ?? 400,
+        BODY_FOR_ERROR[result.error] ?? result.error
+      );
     }
 
     return ok({ orderId: id, status: 'CANCELLED' });

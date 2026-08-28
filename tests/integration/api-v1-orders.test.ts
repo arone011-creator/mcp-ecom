@@ -245,16 +245,32 @@ describe('POST /api/v1/orders/[id]/cancel', () => {
     expect((await cancel('order_1')).status).toBe(200);
   });
 
-  it('maps an Unauthorized result to 403', async () => {
+  // Someone else's order answers exactly as a non-existent one does. A 403
+  // here would say "this id is real, it just is not yours" -- which is the
+  // enumeration oracle the GET route deliberately refuses to be, and there
+  // is no point closing that door on one route and leaving it open on
+  // another against the same ids.
+  it('maps an Unauthorized result to 404, not 403', async () => {
     mockCancel.mockResolvedValue({ success: false, error: 'Unauthorized' });
 
-    expect((await cancel('order_1')).status).toBe(403);
+    expect((await cancel('order_1')).status).toBe(404);
   });
 
   it('maps a missing order to 404', async () => {
     mockCancel.mockResolvedValue({ success: false, error: 'Order not found' });
 
     expect((await cancel('order_1')).status).toBe(404);
+  });
+
+  it('answers a missing order and an unowned one identically', async () => {
+    mockCancel.mockResolvedValue({ success: false, error: 'Order not found' });
+    const missing = await cancel('order_1');
+
+    mockCancel.mockResolvedValue({ success: false, error: 'Unauthorized' });
+    const unowned = await cancel('order_1');
+
+    expect(missing.status).toBe(unowned.status);
+    await expect(missing.json()).resolves.toEqual(await unowned.json());
   });
 
   it('maps a non-cancellable status to 409', async () => {
