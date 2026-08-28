@@ -20,26 +20,6 @@ jest.mock('next-auth/jwt', () => ({
   getToken: jest.fn(),
 }));
 
-// Mock Stripe
-jest.mock('stripe', () => {
-  return jest.fn().mockImplementation(() => ({
-    checkout: {
-      sessions: {
-        create: jest.fn(),
-        retrieve: jest.fn(),
-      },
-    },
-    webhooks: {
-      constructEvent: jest.fn(),
-    },
-    paymentIntents: {
-      create: jest.fn(),
-      confirm: jest.fn(),
-      retrieve: jest.fn(),
-    },
-  }));
-});
-
 // Mock Next.js router
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -74,9 +54,6 @@ jest.mock('next/link', () => {
 // Set up test environment variables
 (process.env as any).NEXTAUTH_SECRET = 'test-secret';
 (process.env as any).NEXTAUTH_URL = 'http://localhost:3000';
-(process.env as any).STRIPE_SECRET_KEY = 'sk_test_mock';
-process.env.STRIPE_PUBLISHABLE_KEY = 'pk_test_mock';
-process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_mock';
 
 // Mock fetch API (Node environment)
 global.fetch = jest.fn();
@@ -117,7 +94,7 @@ export const createMockOrder = (overrides = {}) => ({
   shipping: 0,
   currency: 'USD',
   paymentStatus: 'paid',
-  paymentMethod: 'stripe',
+  paymentMethod: 'demo',
   createdAt: new Date(),
   updatedAt: new Date(),
   shippingAddress: {
@@ -130,14 +107,6 @@ export const createMockOrder = (overrides = {}) => ({
     country: 'US',
   },
   items: [],
-  ...overrides,
-});
-
-export const createMockCheckoutSession = (overrides = {}) => ({
-  id: 'cs_test_123',
-  url: 'https://checkout.stripe.com/pay/cs_test_123',
-  payment_status: 'unpaid',
-  status: 'open',
   ...overrides,
 });
 

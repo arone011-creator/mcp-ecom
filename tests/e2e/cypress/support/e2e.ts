@@ -69,16 +69,6 @@ beforeEach(() => {
     headers: { 'content-type': 'application/javascript' },
   });
 
-  cy.intercept('POST', '/api/stripe/create-checkout', {
-    statusCode: 200,
-    body: { sessionId: 'cs_test_mock_session_id' },
-  }).as('createCheckoutSession');
-
-  cy.intercept('POST', '/api/stripe/webhook', {
-    statusCode: 200,
-    body: { received: true },
-  }).as('stripeWebhook');
-
   cy.intercept('POST', '/api/send-email', {
     statusCode: 200,
     body: { success: true },

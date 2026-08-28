@@ -41,18 +41,6 @@ jest.mock('@/lib/prisma', () => ({
   },
 }));
 
-// Mock Stripe
-jest.mock('@/lib/stripe', () => ({
-  __esModule: true,
-  default: {
-    checkout: {
-      sessions: {
-        create: jest.fn(),
-      },
-    },
-  },
-}));
-
 describe('Products API Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -235,73 +223,6 @@ describe('Cart API Integration', () => {
 
       // Verify product not found scenario
       expect(prisma.product.findUnique).toBeDefined();
-    });
-  });
-});
-
-describe('Checkout API Integration', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  describe('POST /api/stripe/create-checkout', () => {
-    it('should create checkout session', async () => {
-      const checkoutData = {
-        items: [
-          {
-            productId: '1',
-            quantity: 2,
-            price: 29.99,
-            name: 'Test Product',
-          },
-        ],
-        customerEmail: 'test@example.com',
-      };
-
-      const mockSession = {
-        id: 'cs_test_123',
-        url: 'https://checkout.stripe.com/pay/cs_test_123',
-      };
-
-      const stripe = require('@/lib/stripe').default;
-      stripe.checkout.sessions.create.mockResolvedValue(mockSession);
-
-      // Verify checkout session creation
-      expect(checkoutData.items.length > 0).toBe(true);
-      expect(checkoutData.customerEmail.includes('@')).toBe(true);
-    });
-
-    it('should validate checkout data', async () => {
-      const invalidCheckoutData = {
-        items: [],
-        customerEmail: 'invalid-email',
-      };
-
-      // Verify validation
-      expect(invalidCheckoutData.items.length === 0).toBe(true);
-      expect(!invalidCheckoutData.customerEmail.includes('@')).toBe(true);
-    });
-
-    it('should handle Stripe errors', async () => {
-      const checkoutData = {
-        items: [
-          {
-            productId: '1',
-            quantity: 1,
-            price: 29.99,
-            name: 'Test Product',
-          },
-        ],
-        customerEmail: 'test@example.com',
-      };
-
-      const stripe = require('@/lib/stripe').default;
-      stripe.checkout.sessions.create.mockRejectedValue(
-        new Error('Stripe API error')
-      );
-
-      const result = await stripe.checkout.sessions.create({}).catch(e => e);
-      expect(result instanceof Error).toBe(true);
     });
   });
 });
