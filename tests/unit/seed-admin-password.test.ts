@@ -93,3 +93,26 @@ describe('prisma/seed.ts', () => {
     expect(seedSource).not.toMatch(/console\.log\(\s*['"`]Password:/);
   });
 });
+
+describe('scripts/set-admin-password.ts', () => {
+  const scriptSource = readFileSync(
+    join(process.cwd(), 'scripts/set-admin-password.ts'),
+    'utf-8'
+  );
+
+  it('resolves the password through the same guard the seed uses', () => {
+    expect(scriptSource).toContain('requireAdminPassword');
+  });
+
+  // Targets interpolating the value, not the word: "Admin password
+  // updated" is a fine thing to print, `${password}` is not.
+  it('never interpolates the password into its output', () => {
+    expect(scriptSource).not.toMatch(
+      /console\.(log|error)\([^)]*\$\{[^}]*password/i
+    );
+  });
+
+  it('writes the admin role alongside the password', () => {
+    expect(scriptSource).toContain('role: UserRole.ADMIN');
+  });
+});
