@@ -12,6 +12,7 @@
 // invent a password for it.
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { compare } from 'bcryptjs';
 import { requireAdminPassword } from '@/prisma/seed-admin-password';
 
 const STRONG = 'a-properly-long-admin-secret';
@@ -114,5 +115,58 @@ describe('scripts/set-admin-password.ts', () => {
 
   it('writes the admin role alongside the password', () => {
     expect(scriptSource).toContain('role: UserRole.ADMIN');
+  });
+});
+
+describe('setAdminPassword', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { setAdminPassword } = require('@/scripts/set-admin-password');
+
+  function db() {
+    return {
+      user: { upsert: jest.fn().mockResolvedValue({ email: 'a@x.com' }) },
+    };
+  }
+
+  it('upserts on the given email', async () => {
+    const target = db();
+
+    await setAdminPassword(target, 'a@x.com', STRONG);
+
+    expect(target.user.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { email: 'a@x.com' } })
+    );
+  });
+
+  it('stores a bcrypt hash, never the plaintext', async () => {
+    const target = db();
+
+    await setAdminPassword(target, 'a@x.com', STRONG);
+
+    const args = target.user.upsert.mock.calls[0][0];
+    expect(args.update.password).toMatch(/^\$2[aby]\$12\$/);
+    expect(JSON.stringify(args)).not.toContain(STRONG);
+  });
+
+  it('produces a hash the sign-in path will accept', async () => {
+    const target = db();
+
+    await setAdminPassword(target, 'a@x.com', STRONG);
+
+    const { password } = target.user.upsert.mock.calls[0][0].update;
+    await expect(compare(STRONG, password)).resolves.toBe(true);
+    await expect(compare('wrong', password)).resolves.toBe(false);
+  });
+
+  // An admin that lost its role should come back an admin, not a customer
+  // who happens to know the password.
+  it('restores the ADMIN role on both create and update', async () => {
+    const target = db();
+
+    await setAdminPassword(target, 'a@x.com', STRONG);
+
+    const args = target.user.upsert.mock.calls[0][0];
+    expect(args.update.role).toBe('ADMIN');
+    expect(args.create.role).toBe('ADMIN');
   });
 });
