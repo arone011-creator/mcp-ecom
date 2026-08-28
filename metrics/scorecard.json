@@ -117,6 +117,45 @@
         }
       },
       "acceptedRegressions": []
+    },
+    {
+      "milestone": "m1-singapore",
+      "capturedAt": "2026-08-28T19:28:19.781Z",
+      "commit": "88bbbf1",
+      "tests": {
+        "passed": 245,
+        "failed": 0,
+        "skipped": 12,
+        "total": 257
+      },
+      "coverage": {
+        "statements": 67.48,
+        "branches": 64.74,
+        "statementsCovered": 301,
+        "statementsTotal": 446,
+        "branchesCovered": 90,
+        "branchesTotal": 139
+      },
+      "typeErrors": 0,
+      "build": {
+        "durationMs": 200308,
+        "standaloneBytes": 81125081
+      },
+      "latency": {
+        "/": {
+          "p50": 101,
+          "p95": 289
+        },
+        "/search?q=iphone": {
+          "p50": 83,
+          "p95": 98
+        },
+        "/api/v1/products?q=shoes&limit=5": {
+          "p50": 77,
+          "p95": 86
+        }
+      },
+      "acceptedRegressions": []
     }
   ]
 }
