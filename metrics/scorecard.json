@@ -52,6 +52,32 @@
       },
       "latency": null,
       "acceptedRegressions": []
+    },
+    {
+      "milestone": "m1-gate2-checkout-flow",
+      "capturedAt": "2026-08-28T15:30:06.545Z",
+      "commit": "7c7d93f",
+      "tests": {
+        "passed": 219,
+        "failed": 0,
+        "skipped": 12,
+        "total": 231
+      },
+      "coverage": {
+        "statements": 68.78,
+        "branches": 63.9,
+        "statementsCovered": 282,
+        "statementsTotal": 410,
+        "branchesCovered": 85,
+        "branchesTotal": 133
+      },
+      "typeErrors": 0,
+      "build": {
+        "durationMs": 195258,
+        "standaloneBytes": 81115492
+      },
+      "latency": null,
+      "acceptedRegressions": []
     }
   ]
 }

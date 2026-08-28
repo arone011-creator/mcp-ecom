@@ -5,8 +5,9 @@
   "description": "Demo e-commerce platform built with Next.js 15, TypeScript, and Prisma. Features admin dashboard, Stripe payments, newsletter subscriptions, custom 404, Docker deployment, and comprehensive testing. Educational resource for modern Next.js development patterns.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
