@@ -83,9 +83,9 @@ export default function HomePage() {
                 asChild
                 variant="outline"
                 size="lg"
-                className="border-white text-white hover:bg-white hover:text-gray-900"
+                className="border-white bg-transparent text-white hover:bg-white hover:text-gray-900"
               >
-                <Link href="/category/featured">Browse Categories</Link>
+                <Link href="/search">Search products</Link>
               </Button>
             </div>
           </div>
