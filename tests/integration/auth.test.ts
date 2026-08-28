@@ -19,6 +19,16 @@ jest.mock('next-auth/jwt', () => ({
   getToken: jest.fn(),
 }));
 
+// This middleware emits 307 for every redirect and never 302, so the
+// assertion these call sites used to carry -- a check that the status was
+// not 302 -- held whether the request was allowed through or redirected
+// away. Ten tests could not fail (finding 33). Assert an actual
+// pass-through instead: a redirect always carries a Location header.
+function expectNotRedirected(response: Response) {
+  expect(response.headers.get('location')).toBeNull();
+  expect(response.status).toBeLessThan(300);
+}
+
 jest.mock('../../lib/auth', () => ({
   authOptions: {
     providers: [],
@@ -44,7 +54,7 @@ describe('Authentication Integration', () => {
       const response = await middleware(request);
 
       expect(response).toBeDefined();
-      expect(response.status).not.toBe(302); // Not redirected
+      expectNotRedirected(response);
     });
 
     it('should redirect unauthenticated users from protected routes', async () => {
@@ -68,7 +78,7 @@ describe('Authentication Integration', () => {
       const response = await middleware(request);
 
       expect(response).toBeDefined();
-      expect(response.status).not.toBe(302);
+      expectNotRedirected(response);
     });
 
     it('should redirect unauthenticated users from admin routes', async () => {
@@ -106,7 +116,7 @@ describe('Authentication Integration', () => {
       const response = await middleware(request);
 
       expect(response).toBeDefined();
-      expect(response.status).not.toBe(302);
+      expectNotRedirected(response);
     });
 
     it('should redirect authenticated users away from auth routes', async () => {
@@ -231,7 +241,7 @@ describe('Authentication Integration', () => {
       const request = new NextRequest('http://localhost:3000/profile');
       const response = await middleware(request);
 
-      expect(response.status).not.toBe(302);
+      expectNotRedirected(response);
     });
 
     it('should handle expired JWT tokens', async () => {
@@ -292,7 +302,7 @@ describe('Authentication Integration', () => {
             const request = new NextRequest(`http://localhost:3000${route}`);
             const response = await middleware(request);
 
-            expect(response.status).not.toBe(302);
+            expectNotRedirected(response);
           });
         });
 
