@@ -2,6 +2,7 @@
 
 import { PrismaClient, ProductStatus, UserRole } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { requireAdminPassword } from './seed-admin-password';
 
 const prisma = new PrismaClient();
 
@@ -10,7 +11,9 @@ async function main() {
 
   // Create admin user
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
-  const adminPassword = await hash('admin123', 12);
+  // Supplied via ADMIN_PASSWORD, never invented here. Throws rather than
+  // falling back to a default, because the fallback was the problem.
+  const adminPassword = await hash(requireAdminPassword(), 12);
 
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
@@ -412,7 +415,7 @@ async function main() {
   console.log(`⭐ Reviews: ${await prisma.review.count()}`);
   console.log('\n🔐 Admin Login:');
   console.log(`Email: ${adminEmail}`);
-  console.log('Password: admin123');
+  console.log('Sign in with the ADMIN_PASSWORD you configured.');
 }
 
 main()
