@@ -43,14 +43,12 @@ async function OrdersList({
     ? new Date(searchParams.dateTo)
     : undefined;
 
-  const result = await getOrders({
-    page,
-    limit: 20,
-    search,
-    status,
-    dateFrom,
-    dateTo,
-  });
+  // getOrders takes positional (page, limit, status). This call site
+  // passed an object, which typechecked only because createCachedFunction
+  // erased the signature -- so `page` received the whole object and the
+  // search and date filters were silently ignored. They still are; the
+  // query does not implement them. Recorded as finding 47.
+  const result = await getOrders(page, 20, status || undefined);
 
   return (
     <div className="space-y-4">

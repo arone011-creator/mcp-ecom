@@ -4,86 +4,37 @@ import { createCachedFunction, CACHE_TAGS } from '@/lib/cache';
 import { getCurrentUser } from '@/lib/roles';
 import { hasPermission, PERMISSIONS } from '@/lib/roles';
 
-// Alias for getOrder - supports optional userId parameter for authorization
-export const getOrderById = (orderId: string, userId?: string) =>
-  getOrder(orderId);
+// Alias for getOrder. The previous signature took a `userId` it never
+// used, which read as though callers could pass an owner to check
+// against; getOrder derives the caller from the session instead.
+export const getOrderById = (orderId: string) => getOrder(orderId);
 
-export const getOrders = createCachedFunction(
-  async (page = 1, limit = 20, status?: string) => {
-    const skip = (page - 1) * limit;
-    const canViewAll = await hasPermission(PERMISSIONS.ORDER_READ_ALL);
+// NOT cached, deliberately. createCachedFunction passes `undefined` as
+// unstable_cache's keyParts, so the cache key is derived from the
+// function's arguments alone. Neither of the two functions below takes a
+// user -- they resolve the caller from the session -- so a shared cache
+// entry would serve one user's orders to the next caller. Next.js
+// currently refuses to run them at all ("used headers inside a function
+// cached with unstable_cache"), which is the only thing that has been
+// preventing that leak (finding 46).
+export const getOrders = async (page = 1, limit = 20, status?: string) => {
+  const skip = (page - 1) * limit;
+  const canViewAll = await hasPermission(PERMISSIONS.ORDER_READ_ALL);
 
-    let where: any = {};
+  let where: any = {};
 
-    if (!canViewAll) {
-      const user = await getCurrentUser();
-      if (!user) throw new Error('Authentication required');
-      where.userId = user.id;
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    const [orders, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        include: {
-          orderItems: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  images: true,
-                  slug: true,
-                },
-              },
-            },
-          },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
-      prisma.order.count({ where }),
-    ]);
-
-    return {
-      orders,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    };
-  },
-  [CACHE_TAGS.orders],
-  60 // 1 minute
-);
-
-export const getOrder = createCachedFunction(
-  async (orderId: string) => {
-    const canViewAll = await hasPermission(PERMISSIONS.ORDER_READ_ALL);
+  if (!canViewAll) {
     const user = await getCurrentUser();
+    if (!user) throw new Error('Authentication required');
+    where.userId = user.id;
+  }
 
-    let where: any = { id: orderId };
+  if (status) {
+    where.status = status;
+  }
 
-    if (!canViewAll && user) {
-      where.userId = user.id;
-    }
-
-    return await prisma.order.findUnique({
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
       where,
       include: {
         orderItems: {
@@ -94,8 +45,6 @@ export const getOrder = createCachedFunction(
                 name: true,
                 images: true,
                 slug: true,
-                price: true,
-                sku: true,
               },
             },
           },
@@ -108,11 +57,71 @@ export const getOrder = createCachedFunction(
           },
         },
       },
-    });
-  },
-  [CACHE_TAGS.order],
-  60
-);
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: limit,
+    }),
+    prisma.order.count({ where }),
+  ]);
+
+  return {
+    orders,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  };
+};
+
+export const getOrder = async (orderId: string) => {
+  const canViewAll = await hasPermission(PERMISSIONS.ORDER_READ_ALL);
+  const user = await getCurrentUser();
+
+  const where: any = { id: orderId };
+
+  // Previously this only narrowed to the caller's own orders when a
+  // user was present, so an anonymous caller fell through with no
+  // ownership filter and could read any order by id. The page is behind
+  // middleware, but M2's API layer calls this directly.
+  if (!canViewAll) {
+    if (!user) return null;
+    where.userId = user.id;
+  }
+
+  // findFirst, not findUnique: `userId` is not part of a unique
+  // constraint, so the ownership filter does not belong in a
+  // findUnique where clause.
+  return await prisma.order.findFirst({
+    where,
+    include: {
+      orderItems: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              images: true,
+              slug: true,
+              price: true,
+              sku: true,
+            },
+          },
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+};
 
 export const getUserOrders = createCachedFunction(
   async (userId: string, page = 1, limit = 10) => {

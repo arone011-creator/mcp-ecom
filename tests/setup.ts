@@ -94,18 +94,9 @@ Object.defineProperty(window, 'sessionStorage', {
 // Mock fetch API
 global.fetch = jest.fn();
 
-// Mock FormData
-global.FormData = jest.fn().mockImplementation(() => ({
-  append: jest.fn(),
-  delete: jest.fn(),
-  get: jest.fn(),
-  getAll: jest.fn(),
-  has: jest.fn(),
-  set: jest.fn(),
-  entries: jest.fn(),
-  keys: jest.fn(),
-  values: jest.fn(),
-}));
+// FormData was mocked here with jest.fn()s, so set() did nothing and
+// get() returned undefined -- any server action reading a form field was
+// untestable. Node's built-in FormData is used instead.
 
 // Mock File API
 global.File = jest.fn().mockImplementation((bits, name, options) => ({
