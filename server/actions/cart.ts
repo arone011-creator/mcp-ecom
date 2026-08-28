@@ -267,16 +267,20 @@ export async function getCart() {
             id: true,
             name: true,
             slug: true,
+            sku: true,
             price: true,
             comparePrice: true,
             images: true,
             status: true,
+            inventory: { select: { available: true } },
           },
         },
       },
     });
 
-    // Convert Decimal prices to numbers
+    // Decimal is not serialisable across the server/client boundary, and
+    // the cart view needs a flat `stock` number rather than the inventory
+    // relation.
     const convertedItems = cartItems.map(item => ({
       ...item,
       product: {
@@ -285,6 +289,7 @@ export async function getCart() {
         comparePrice: item.product.comparePrice
           ? Number(item.product.comparePrice)
           : null,
+        stock: item.product.inventory[0]?.available ?? 0,
       },
     }));
 
