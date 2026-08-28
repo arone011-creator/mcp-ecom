@@ -18,6 +18,8 @@ jest.mock('next-auth/next', () => ({
 
 jest.mock('next-auth/jwt', () => ({
   getToken: jest.fn(),
+  decode: jest.fn(),
+  encode: jest.fn(),
 }));
 
 // Mock Next.js router
