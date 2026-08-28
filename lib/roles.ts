@@ -3,10 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
 import { redirect } from 'next/navigation';
 
+// Mirrors the Prisma `enum UserRole` exactly. A value here that Prisma
+// cannot store is a permission branch no user can ever reach.
 export enum Role {
   USER = 'USER',
   ADMIN = 'ADMIN',
-  SUPER_ADMIN = 'SUPER_ADMIN',
 }
 
 export const PERMISSIONS = {
@@ -60,7 +61,6 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     PERMISSIONS.ADMIN_ACCESS,
     PERMISSIONS.ANALYTICS_READ,
   ],
-  [Role.SUPER_ADMIN]: [...Object.values(PERMISSIONS)],
 };
 
 // Get current user session
@@ -75,7 +75,7 @@ export const hasRole = async (requiredRole: Role) => {
   if (!user) return false;
 
   const userRole = user.role as Role;
-  return userRole === requiredRole || userRole === Role.SUPER_ADMIN;
+  return userRole === requiredRole;
 };
 
 // Check if user has specific permission
@@ -141,11 +141,6 @@ export const requirePermission = async (permission: Permission) => {
 // Admin guard
 export const requireAdmin = async () => {
   return await requireRole(Role.ADMIN);
-};
-
-// Super admin guard
-export const requireSuperAdmin = async () => {
-  return await requireRole(Role.SUPER_ADMIN);
 };
 
 // Check if user can access admin area

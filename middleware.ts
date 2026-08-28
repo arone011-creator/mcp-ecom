@@ -48,7 +48,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Check if user has admin role
-    if (token.role !== 'admin') {
+    if (token.role !== 'ADMIN') {
       // Redirect to access denied page or home
       return NextResponse.redirect(new URL('/access-denied', request.url));
     }
@@ -84,7 +84,7 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    if (token.role !== 'admin') {
+    if (token.role !== 'ADMIN') {
       return new NextResponse(
         JSON.stringify({ error: 'Admin access required' }),
         {

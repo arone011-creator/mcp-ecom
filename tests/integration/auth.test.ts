@@ -61,7 +61,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest('http://localhost:3000/profile');
@@ -85,7 +85,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-456',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest('http://localhost:3000/admin');
@@ -99,7 +99,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'admin-123',
         email: 'admin@example.com',
-        role: 'admin',
+        role: 'ADMIN',
       } as any);
 
       const request = new NextRequest('http://localhost:3000/admin/products');
@@ -113,7 +113,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest('http://localhost:3000/auth/signin');
@@ -127,7 +127,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest(
@@ -156,7 +156,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest('http://localhost:3000/api/profile');
@@ -170,7 +170,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest(
@@ -187,7 +187,7 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'admin-123',
         email: 'admin@example.com',
-        role: 'admin',
+        role: 'ADMIN',
       } as any);
 
       const request = new NextRequest(
@@ -203,14 +203,14 @@ describe('Authentication Integration', () => {
       mockGetToken.mockResolvedValue({
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
       } as any);
 
       const request = new NextRequest('http://localhost:3000/api/profile');
       const response = await middleware(request);
 
       expect(response.headers.get('X-User-ID')).toBe('user-123');
-      expect(response.headers.get('X-User-Role')).toBe('customer');
+      expect(response.headers.get('X-User-Role')).toBe('USER');
       expect(response.headers.get('X-User-Email')).toBe('user@example.com');
     });
   });
@@ -220,7 +220,7 @@ describe('Authentication Integration', () => {
       const validToken = {
         sub: 'user-123',
         email: 'user@example.com',
-        role: 'customer',
+        role: 'USER',
         name: 'Test User',
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
@@ -261,12 +261,12 @@ describe('Authentication Integration', () => {
   describe('Role-Based Access Control', () => {
     const testCases = [
       {
-        role: 'customer',
+        role: 'USER',
         allowedRoutes: ['/profile', '/orders'],
         blockedRoutes: ['/admin/products', '/admin/orders'],
       },
       {
-        role: 'admin',
+        role: 'ADMIN',
         allowedRoutes: [
           '/profile',
           '/orders',
