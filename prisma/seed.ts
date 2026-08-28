@@ -14,24 +14,30 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {},
+    // Not `update: {}` -- an empty update means re-seeding never repairs a
+    // user who is already in the database without a password.
+    update: { password: adminPassword },
     create: {
       email: adminEmail,
       name: 'Admin User',
       role: UserRole.ADMIN,
+      password: adminPassword,
     },
   });
 
   console.log(`👤 Created admin user: ${admin.email}`);
 
   // Create test customer
+  const customerPassword = await hash('demo1234', 12);
+
   const customer = await prisma.user.upsert({
     where: { email: 'customer@example.com' },
-    update: {},
+    update: { password: customerPassword },
     create: {
       email: 'customer@example.com',
       name: 'John Doe',
       role: UserRole.USER,
+      password: customerPassword,
     },
   });
 
