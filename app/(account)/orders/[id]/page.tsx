@@ -14,16 +14,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatPrice, formatDate } from '@/lib/utils';
 
 interface OrderDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function generateMetadata({
   params,
 }: OrderDetailPageProps): Promise<Metadata> {
+  const { id } = await params;
   return {
-    title: `Order #${params.id}`,
+    title: `Order #${id}`,
     description: 'View your order details and tracking information.',
   };
 }
@@ -63,13 +64,14 @@ function getStatusColor(status: string) {
 export default async function OrderDetailPage({
   params,
 }: OrderDetailPageProps) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.email) {
     redirect('/api/auth/signin');
   }
 
-  const order = await getOrderById(params.id);
+  const order = await getOrderById(id);
 
   if (!order) {
     notFound();

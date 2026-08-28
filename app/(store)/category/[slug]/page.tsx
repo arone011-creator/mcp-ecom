@@ -16,21 +16,26 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 interface CategoryPageProps {
-  params: {
+  params: Promise<{
     slug: string;
-  };
-  searchParams: {
+  }>;
+  searchParams: Promise<{
     sort?: string;
     minPrice?: string;
     maxPrice?: string;
     page?: string;
-  };
+  }>;
 }
+
+type ResolvedCategorySearchParams = Awaited<
+  CategoryPageProps['searchParams']
+>;
 
 export async function generateMetadata({
   params,
 }: CategoryPageProps): Promise<Metadata> {
-  const category = await getCategoryBySlug(params.slug);
+  const { slug } = await params;
+  const category = await getCategoryBySlug(slug);
 
   if (!category) {
     return {
@@ -72,7 +77,7 @@ async function CategoryProducts({
   searchParams,
 }: {
   categoryId: string;
-  searchParams: CategoryPageProps['searchParams'];
+  searchParams: ResolvedCategorySearchParams;
 }) {
   const page = parseInt(searchParams.page || '1');
   const sort = searchParams.sort || 'newest';
@@ -180,7 +185,9 @@ export default async function CategoryPage({
   params,
   searchParams,
 }: CategoryPageProps) {
-  const category = await getCategoryBySlug(params.slug);
+  const { slug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const category = await getCategoryBySlug(slug);
 
   if (!category) {
     notFound();
@@ -246,7 +253,7 @@ export default async function CategoryPage({
           <Suspense fallback={<ProductGridSkeleton />}>
             <CategoryProducts
               categoryId={category.id}
-              searchParams={searchParams}
+              searchParams={resolvedSearchParams}
             />
           </Suspense>
         </main>

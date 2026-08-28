@@ -14,20 +14,23 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
 interface SearchPageProps {
-  searchParams: {
+  searchParams: Promise<{
     q?: string;
     sort?: string;
     category?: string;
     minPrice?: string;
     maxPrice?: string;
     page?: string;
-  };
+  }>;
 }
+
+type ResolvedSearchParams = Awaited<SearchPageProps['searchParams']>;
 
 export async function generateMetadata({
   searchParams,
 }: SearchPageProps): Promise<Metadata> {
-  const query = searchParams.q || '';
+  const { q } = await searchParams;
+  const query = q || '';
 
   if (!query) {
     return {
@@ -49,19 +52,19 @@ export async function generateMetadata({
 }
 
 async function SearchResults({
-  searchParams,
+  searchParams: resolvedSearchParams,
 }: {
-  searchParams: SearchPageProps['searchParams'];
+  searchParams: ResolvedSearchParams;
 }) {
-  const query = searchParams.q || '';
-  const page = parseInt(searchParams.page || '1');
-  const sort = searchParams.sort || 'relevance';
-  const categoryFilter = searchParams.category;
-  const minPrice = searchParams.minPrice
-    ? parseFloat(searchParams.minPrice)
+  const query = resolvedSearchParams.q || '';
+  const page = parseInt(resolvedSearchParams.page || '1');
+  const sort = resolvedSearchParams.sort || 'relevance';
+  const categoryFilter = resolvedSearchParams.category;
+  const minPrice = resolvedSearchParams.minPrice
+    ? parseFloat(resolvedSearchParams.minPrice)
     : undefined;
-  const maxPrice = searchParams.maxPrice
-    ? parseFloat(searchParams.maxPrice)
+  const maxPrice = resolvedSearchParams.maxPrice
+    ? parseFloat(resolvedSearchParams.maxPrice)
     : undefined;
 
   if (!query.trim()) {
@@ -158,7 +161,7 @@ async function SearchResults({
             <Button asChild variant="outline">
               <Link
                 href={`/search?${new URLSearchParams({
-                  ...searchParams,
+                  ...resolvedSearchParams,
                   page: (page - 1).toString(),
                 })}`}
               >
@@ -183,7 +186,7 @@ async function SearchResults({
                   >
                     <Link
                       href={`/search?${new URLSearchParams({
-                        ...searchParams,
+                        ...resolvedSearchParams,
                         page: pageNum.toString(),
                       })}`}
                     >
@@ -199,7 +202,7 @@ async function SearchResults({
             <Button asChild variant="outline">
               <Link
                 href={`/search?${new URLSearchParams({
-                  ...searchParams,
+                  ...resolvedSearchParams,
                   page: (page + 1).toString(),
                 })}`}
               >
@@ -213,8 +216,9 @@ async function SearchResults({
   );
 }
 
-export default function SearchPage({ searchParams }: SearchPageProps) {
-  const query = searchParams.q || '';
+export default async function SearchPage({ searchParams }: SearchPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const query = resolvedSearchParams.q || '';
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -238,24 +242,14 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
               />
               {query && (
                 <Button
-                  type="button"
+                  asChild
                   variant="ghost"
                   size="sm"
                   className="absolute right-1 top-1 h-8 w-8 p-0"
-                  onClick={() => {
-                    const form = document.querySelector(
-                      'form'
-                    ) as HTMLFormElement;
-                    const input = form?.querySelector(
-                      'input[name="q"]'
-                    ) as HTMLInputElement;
-                    if (input) {
-                      input.value = '';
-                      form.submit();
-                    }
-                  }}
                 >
-                  <X className="h-4 w-4" />
+                  <Link href="/search" aria-label="Clear search">
+                    <X className="h-4 w-4" />
+                  </Link>
                 </Button>
               )}
             </div>
@@ -268,9 +262,9 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
 
         {/* Active Filters */}
         {(query ||
-          searchParams.category ||
-          searchParams.minPrice ||
-          searchParams.maxPrice) && (
+          resolvedSearchParams.category ||
+          resolvedSearchParams.minPrice ||
+          resolvedSearchParams.maxPrice) && (
           <div className="flex flex-wrap gap-2">
             {query && (
               <Badge variant="secondary" className="flex items-center gap-1">
@@ -287,9 +281,9 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
                 </Button>
               </Badge>
             )}
-            {searchParams.category && (
+            {resolvedSearchParams.category && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                Category: {searchParams.category}
+                Category: {resolvedSearchParams.category}
                 <Button
                   asChild
                   variant="ghost"
@@ -298,7 +292,7 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
                 >
                   <Link
                     href={`/search?${new URLSearchParams({
-                      ...searchParams,
+                      ...resolvedSearchParams,
                       category: '',
                     })}`}
                   >
@@ -307,10 +301,10 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
                 </Button>
               </Badge>
             )}
-            {(searchParams.minPrice || searchParams.maxPrice) && (
+            {(resolvedSearchParams.minPrice || resolvedSearchParams.maxPrice) && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                Price: ${searchParams.minPrice || '0'} - $
-                {searchParams.maxPrice || '∞'}
+                Price: ${resolvedSearchParams.minPrice || '0'} - $
+                {resolvedSearchParams.maxPrice || '∞'}
                 <Button
                   asChild
                   variant="ghost"
@@ -319,7 +313,7 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
                 >
                   <Link
                     href={`/search?${new URLSearchParams({
-                      ...searchParams,
+                      ...resolvedSearchParams,
                       minPrice: '',
                       maxPrice: '',
                     })}`}
@@ -342,7 +336,7 @@ export default function SearchPage({ searchParams }: SearchPageProps) {
         {/* Main Content */}
         <main className="flex-1">
           <Suspense fallback={<ProductGridSkeleton />}>
-            <SearchResults searchParams={searchParams} />
+            <SearchResults searchParams={resolvedSearchParams} />
           </Suspense>
         </main>
       </div>
