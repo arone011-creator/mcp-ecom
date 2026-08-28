@@ -4,6 +4,10 @@ import { beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import { PrismaClient } from '@prisma/client';
 import { mockDeep, mockReset, DeepMockProxy } from 'jest-mock-extended';
 
+// Installed but never wired up, so toBeInTheDocument and friends did not
+// exist on expect().
+import '@testing-library/jest-dom';
+
 // Global test setup and configuration
 
 // Mock Prisma Client
@@ -57,16 +61,11 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/test-path',
 }));
 
-// Mock React hooks
-jest.mock('react', () => ({
-  ...jest.requireActual('react'),
-  useState: jest.fn(),
-  useEffect: jest.fn(),
-  useContext: jest.fn(),
-  useReducer: jest.fn(),
-  useCallback: jest.fn(),
-  useMemo: jest.fn(),
-}));
+// React's hooks were mocked here as bare jest.fn()s, which return
+// undefined -- so `const [x, setX] = useState(...)` threw and no stateful
+// component could be rendered in a test at all. Nothing depended on the
+// mock; the existing suites only render static JSX. Removed so component
+// behaviour can actually be tested.
 
 // Mock environment variables
 (process.env as any).NODE_ENV = 'test';

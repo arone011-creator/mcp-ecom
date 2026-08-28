@@ -5,7 +5,7 @@ module.exports = {
       displayName: 'unit',
       testEnvironment: 'jsdom',
       roots: ['<rootDir>/tests/unit'],
-      testMatch: ['**/?(*.)+(spec|test).ts'],
+      testMatch: ['**/?(*.)+(spec|test).ts?(x)'],
       moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
       preset: 'ts-jest',
       transform: {
@@ -13,7 +13,7 @@ module.exports = {
           'ts-jest',
           {
             tsconfig: {
-              jsx: 'react',
+              jsx: 'react-jsx',
               esModuleInterop: true,
               allowSyntheticDefaultImports: true,
               strict: false,
@@ -39,7 +39,7 @@ module.exports = {
       displayName: 'integration',
       testEnvironment: 'node',
       roots: ['<rootDir>/tests/integration', '<rootDir>/tests/e2e'],
-      testMatch: ['**/?(*.)+(spec|test).ts'],
+      testMatch: ['**/?(*.)+(spec|test).ts?(x)'],
       moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
       preset: 'ts-jest',
       transform: {
@@ -47,7 +47,7 @@ module.exports = {
           'ts-jest',
           {
             tsconfig: {
-              jsx: 'react',
+              jsx: 'react-jsx',
               esModuleInterop: true,
               allowSyntheticDefaultImports: true,
               strict: false,
@@ -81,7 +81,7 @@ module.exports = {
           'ts-jest',
           {
             tsconfig: {
-              jsx: 'react',
+              jsx: 'react-jsx',
               esModuleInterop: true,
               allowSyntheticDefaultImports: true,
               strict: false,
