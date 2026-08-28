@@ -26,7 +26,11 @@ loadEnvConfig(process.cwd());
 
 type AdminWriter = {
   user: {
-    upsert: (args: unknown) => Promise<{ email: string }>;
+    // `any` on the argument and PromiseLike on the result are both
+    // deliberate: Prisma's upsert is generic over its own argument type
+    // and returns its own thenable, so anything narrower here makes the
+    // real client unassignable to this parameter.
+    upsert: (args: any) => PromiseLike<{ email: string }>;
   };
 };
 
