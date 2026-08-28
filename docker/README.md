@@ -34,7 +34,7 @@ The main `docker-compose.yml` is located in the root directory and includes:
 
 Before running Docker services, ensure you have:
 1. Docker and Docker Compose installed
-2. `.env.production` file configured (template provided in root)
+2. `.env.production` file created locally (copy `.env.example`). It is intentionally NOT committed: a checked-in copy is loaded by `next build` and silently supplies fallbacks, including a publicly-known NEXTAUTH_SECRET, whenever a real environment variable is missing.
 3. All required environment variables set
 
 ## Quick Start with Docker
