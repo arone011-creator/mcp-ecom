@@ -7,7 +7,14 @@ function entry(overrides: Partial<Entry> = {}): Entry {
     capturedAt: '2026-08-27T00:00:00.000Z',
     commit: 'abc1234',
     tests: { passed: 10, failed: 0, skipped: 0, total: 10 },
-    coverage: { statements: 80, branches: 70 },
+    coverage: {
+      statements: 80,
+      branches: 70,
+      statementsCovered: 80,
+      statementsTotal: 100,
+      branchesCovered: 70,
+      branchesTotal: 100,
+    },
     typeErrors: 0,
     build: { durationMs: 60000, standaloneBytes: 100_000_000 },
     latency: null,
@@ -88,16 +95,34 @@ describe('compare', () => {
   });
 
   it('flags a drop in statement coverage', () => {
-    const current = entry({ coverage: { statements: 79, branches: 70 } });
+    const current = entry({
+      coverage: {
+        statements: 79,
+        branches: 70,
+        statementsCovered: 79,
+        statementsTotal: 100,
+        branchesCovered: 70,
+        branchesTotal: 100,
+      },
+    });
     expect(compare(entry(), current)).toEqual([
-      expect.stringContaining('coverage.statements: 80% -> 79%'),
+      expect.stringContaining('coverage.statements: covered 80 -> 79'),
     ]);
   });
 
   it('flags a drop in branch coverage', () => {
-    const current = entry({ coverage: { statements: 80, branches: 69 } });
+    const current = entry({
+      coverage: {
+        statements: 80,
+        branches: 69,
+        statementsCovered: 80,
+        statementsTotal: 100,
+        branchesCovered: 69,
+        branchesTotal: 100,
+      },
+    });
     expect(compare(entry(), current)).toEqual([
-      expect.stringContaining('coverage.branches: 70% -> 69%'),
+      expect.stringContaining('coverage.branches: covered 70 -> 69'),
     ]);
   });
 
@@ -134,6 +159,69 @@ describe('compare', () => {
     expect(compare(previous, current)).toEqual([]);
   });
 
+  it('does not call it a regression when the measured surface grew', () => {
+    // Gate 1 hit this for real: fixing an unrelated import made two more
+    // files loadable under jest, so they entered the coverage report for
+    // the first time and the percentage fell from 70.89 to 60 while not a
+    // single line lost coverage.
+    const previous = entry({
+      coverage: {
+        statements: 70.89,
+        branches: 70.58,
+        statementsCovered: 95,
+        statementsTotal: 134,
+        branchesCovered: 36,
+        branchesTotal: 51,
+      },
+    });
+    const current = entry({
+      coverage: {
+        statements: 60,
+        branches: 57.69,
+        statementsCovered: 147,
+        statementsTotal: 245,
+        branchesCovered: 45,
+        branchesTotal: 78,
+      },
+    });
+    expect(compare(previous, current)).toEqual([]);
+  });
+
+  it('flags a real regression when fewer statements are covered', () => {
+    const previous = entry();
+    const current = entry({
+      coverage: {
+        statements: 75,
+        branches: 70,
+        statementsCovered: 75,
+        statementsTotal: 100,
+        branchesCovered: 70,
+        branchesTotal: 100,
+      },
+    });
+    expect(compare(previous, current)).toEqual([
+      expect.stringContaining('coverage.statements'),
+    ]);
+  });
+
+  it('flags fewer covered branches even when the percentage rose', () => {
+    // Deleting well-tested code raises the percentage while covering less.
+    const previous = entry();
+    const current = entry({
+      coverage: {
+        statements: 80,
+        branches: 90,
+        statementsCovered: 80,
+        statementsTotal: 100,
+        branchesCovered: 45,
+        branchesTotal: 50,
+      },
+    });
+    expect(compare(previous, current)).toEqual([
+      expect.stringContaining('coverage.branches'),
+    ]);
+  });
+
   it('suppresses a regression that has been explicitly accepted', () => {
     const current = entry({
       typeErrors: 3,
@@ -145,7 +233,14 @@ describe('compare', () => {
   it('reports every independent regression at once', () => {
     const current = entry({
       typeErrors: 2,
-      coverage: { statements: 70, branches: 60 },
+      coverage: {
+        statements: 70,
+        branches: 60,
+        statementsCovered: 70,
+        statementsTotal: 100,
+        branchesCovered: 60,
+        branchesTotal: 100,
+      },
     });
     expect(compare(entry(), current)).toHaveLength(3);
   });

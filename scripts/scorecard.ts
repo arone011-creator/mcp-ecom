@@ -30,11 +30,24 @@ export type Entry = {
     skipped: number;
     total: number;
   };
-  coverage: { statements: number; branches: number };
+  coverage: {
+    statements: number;
+    branches: number;
+    // Absolutes matter: percentages alone cannot tell "we covered less"
+    // apart from "we started measuring more code". Gate 1 hit exactly
+    // that -- an unrelated import fix made two more files loadable under
+    // jest, the denominator grew 134 -> 245, and the percentage fell
+    // without a single line losing coverage.
+    statementsCovered: number;
+    statementsTotal: number;
+    branchesCovered: number;
+    branchesTotal: number;
+  };
   typeErrors: number;
   build: { durationMs: number; standaloneBytes: number };
   latency: Record<string, Timing> | null;
   acceptedRegressions: string[];
+  note?: string;
 };
 
 const SCORECARD_PATH = join(process.cwd(), 'metrics', 'scorecard.json');
@@ -86,18 +99,37 @@ export function compare(previous: Entry | undefined, current: Entry): string[] {
   }
 
   // Relative gates.
-  if (current.coverage.statements < previous.coverage.statements) {
-    flag(
-      'coverage.statements',
-      `coverage.statements: ${previous.coverage.statements}% -> ${current.coverage.statements}%`
-    );
-  }
-  if (current.coverage.branches < previous.coverage.branches) {
-    flag(
-      'coverage.branches',
-      `coverage.branches: ${previous.coverage.branches}% -> ${current.coverage.branches}%`
-    );
-  }
+  // Covering fewer lines is always a regression. A falling percentage is
+  // only a regression when the measured surface did not grow -- otherwise
+  // it just means newly visible code is less well covered than what was
+  // already there, which is information, not a step backwards.
+  const coverageRegressed = (
+    kind: 'statements' | 'branches',
+    coveredKey: 'statementsCovered' | 'branchesCovered',
+    totalKey: 'statementsTotal' | 'branchesTotal'
+  ) => {
+    const before = previous.coverage;
+    const after = current.coverage;
+
+    if (after[coveredKey] < before[coveredKey]) {
+      flag(
+        `coverage.${kind}`,
+        `coverage.${kind}: covered ${before[coveredKey]} -> ${after[coveredKey]} ` +
+          `(of ${before[totalKey]} -> ${after[totalKey]})`
+      );
+      return;
+    }
+
+    if (after[kind] < before[kind] && after[totalKey] <= before[totalKey]) {
+      flag(
+        `coverage.${kind}`,
+        `coverage.${kind}: ${before[kind]}% -> ${after[kind]}%`
+      );
+    }
+  };
+
+  coverageRegressed('statements', 'statementsCovered', 'statementsTotal');
+  coverageRegressed('branches', 'branchesCovered', 'branchesTotal');
   if (current.build.durationMs > previous.build.durationMs * BUILD_TOLERANCE) {
     flag(
       'build.durationMs',
@@ -157,9 +189,10 @@ function collectTests() {
 
   const result = JSON.parse(readFileSync(resultPath, 'utf-8'));
   const summaryPath = join(process.cwd(), 'coverage', 'coverage-summary.json');
+  const empty = { pct: 0, covered: 0, total: 0 };
   const summary = existsSync(summaryPath)
     ? JSON.parse(readFileSync(summaryPath, 'utf-8'))
-    : { total: { statements: { pct: 0 }, branches: { pct: 0 } } };
+    : { total: { statements: empty, branches: empty } };
 
   return {
     tests: {
@@ -171,6 +204,10 @@ function collectTests() {
     coverage: {
       statements: summary.total.statements.pct as number,
       branches: summary.total.branches.pct as number,
+      statementsCovered: summary.total.statements.covered as number,
+      statementsTotal: summary.total.statements.total as number,
+      branchesCovered: summary.total.branches.covered as number,
+      branchesTotal: summary.total.branches.total as number,
     },
   };
 }
@@ -262,8 +299,14 @@ async function main() {
     `  tests            ${tests.passed} passed, ${tests.failed} failed, ` +
       `${tests.skipped} skipped (${tests.total} total)`
   );
-  console.log(`  coverage stmts   ${coverage.statements}%`);
-  console.log(`  coverage branch  ${coverage.branches}%`);
+  console.log(
+    `  coverage stmts   ${coverage.statements}% ` +
+      `(${coverage.statementsCovered}/${coverage.statementsTotal})`
+  );
+  console.log(
+    `  coverage branch  ${coverage.branches}% ` +
+      `(${coverage.branchesCovered}/${coverage.branchesTotal})`
+  );
   console.log(`  type errors      ${typeErrors}`);
   console.log(`  build            ${Math.round(build.durationMs / 1000)}s`);
   console.log(

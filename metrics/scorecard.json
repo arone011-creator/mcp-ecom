@@ -12,12 +12,43 @@
       },
       "coverage": {
         "statements": 70.89,
-        "branches": 70.58
+        "branches": 70.58,
+        "statementsCovered": 95,
+        "statementsTotal": 134,
+        "branchesCovered": 36,
+        "branchesTotal": 51
       },
       "typeErrors": 0,
       "build": {
         "durationMs": 228342,
         "standaloneBytes": 80932688
+      },
+      "latency": null,
+      "acceptedRegressions": [],
+      "note": "Coverage here measured lib/utils.ts alone. jest only instruments files a test imports, and lib/auth.ts and lib/roles.ts were unloadable under jest at this commit (finding 30), so they never entered the report. Treat the percentages as a one-file sample, not a project-wide figure; the absolute covered counts are the comparable quantity."
+    },
+    {
+      "milestone": "m1-gate1-auth-and-search",
+      "capturedAt": "2026-08-28T13:52:04.317Z",
+      "commit": "cc17df5",
+      "tests": {
+        "passed": 193,
+        "failed": 0,
+        "skipped": 12,
+        "total": 205
+      },
+      "coverage": {
+        "statements": 60,
+        "branches": 57.69,
+        "statementsCovered": 147,
+        "statementsTotal": 245,
+        "branchesCovered": 45,
+        "branchesTotal": 78
+      },
+      "typeErrors": 0,
+      "build": {
+        "durationMs": 215137,
+        "standaloneBytes": 80967941
       },
       "latency": null,
       "acceptedRegressions": []
