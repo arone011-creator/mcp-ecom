@@ -145,6 +145,7 @@ npm run test:e2e      # Run Cypress tests
 |-------|-------------|
 | **[Technical Snapshot](docs/TECHNICAL_SNAPSHOT.txt)** | **The whole system in one document — architecture, stack, API contract, deployment, limits. Every section has a plain-language summary.** |
 | **[Iterations](docs/ITERATIONS.txt)** | **How it was built: what worked, what failed, and how to replicate the project from scratch.** |
+| **[M4 Plan](docs/PLAN_M4_STOREFRONT.txt)** | **What comes next: this repo's half of the chat UI and agent work.** |
 | [Quick Start](QUICKSTART.md) | Get running in 5 minutes |
 | [Dev Setup](docs/setup/DEV_SETUP.md) | Complete development environment setup |
 | [Installation](docs/setup/INSTALLATION.md) | Automated environment setup script |

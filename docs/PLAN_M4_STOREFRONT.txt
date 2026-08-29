@@ -1,0 +1,317 @@
+================================================================================
+IMPLEMENTATION PLAN - M4 / PHASE 2, STOREFRONT SHARE
+The storefront's half of "one agent, with a chat UI". Written 29 Aug 2026.
+================================================================================
+
+M4 is split across two repositories, because the work genuinely is.
+
+    THIS PLAN          the storefront: token refresh, the chat UI, the event
+                       stream to the browser, and the approval control
+    THE OTHER PLAN     mcp-ecom-agent-layer/docs/PLAN_M4_AGENT.txt - the
+                       agent itself, its evaluation harness, and its deploy
+
+Neither is complete alone. Read both before starting either.
+
+    IN PLAIN TERMS
+    The next stage adds an AI assistant customers can talk to. Half that
+    work is the chat window and the "are you sure?" button, which live in
+    the shop. The other half is the AI itself, which lives in the other
+    project. This document covers the shop's half.
+
+
+WHAT THIS PLAN IS, AND IS NOT
+-----------------------------
+It is a TASK-LEVEL plan: what to build, in what order, which files, what
+each task must prove before it is done, and which decisions must be made
+first.
+
+It is NOT a step-by-step script with the code pre-written. That is
+deliberate, and it is this project's own hard lesson: the M3 plan was
+written against the real code rather than against design documents, and
+that is what caught three places where the design was wrong about its own
+system. Writing the UI code now, against components that do not exist and a
+streaming contract not yet frozen, would produce confident fiction.
+
+Write each task's step-level plan against the real code, at the time.
+
+    IN PLAIN TERMS
+    This lists what to build and in what order, not the finished code.
+    Writing the code in advance - before the parts it depends on exist -
+    has already been proven on this project to produce plans that are
+    wrong in ways nobody notices until late.
+
+
+CONTENTS
+--------
+     1. Decisions that must be made first
+     2. What this half delivers
+     3. The event contract - freeze it before anything consumes it
+     4. Task list
+     5. Exit criteria
+     6. Risks carried in
+
+
+================================================================================
+1. DECISIONS THAT MUST BE MADE FIRST
+================================================================================
+
+Three. Each changes the task breakdown, so settle them before Task 1.
+
+(A) WHERE DOES THE AGENT LOOP RUN?
+
+    The chat UI is Next.js. The agent is Python. Something must sit between
+    them. Two options:
+
+      1. The browser talks to a Next.js route, which talks to the agent
+         service over HTTP. One public surface, session cookie already
+         present, CORS is not a problem.
+
+      2. The browser talks to the agent service directly. Fewer hops, but
+         a second public service handling browser sessions, and the
+         approval control would live outside the app that authenticates
+         the user.
+
+    RECOMMENDED: option 1. It keeps every browser-facing concern in the
+    storefront, which is the thing that already knows who is signed in.
+    It also keeps the approval mint reachable only from server-side code.
+
+(B) WHO MINTS THE APPROVAL - AND IT MUST NOT BE THE AGENT.
+
+    This is the load-bearing decision of the whole milestone.
+
+    The MCP server refuses a high-risk call without an approval token, and
+    mints tokens from an HTTP route that is deliberately not an AI tool. But
+    "not a tool" only helps if the agent process cannot make arbitrary HTTP
+    calls to that route.
+
+    THE RULE: the approval is minted by the Next.js route handler, after a
+    human clicks, and handed to the agent as the argument of the next tool
+    call. The agent never holds the ability to mint one.
+
+    If the agent process can reach /approvals, the entire mechanism is
+    theatre. Write a test that asserts the agent's egress cannot.
+
+(C) HOW DOES THE BROWSER GET A BEARER TOKEN?
+
+    The MCP server needs one, and it cannot be the seven-day default -
+    these tokens cannot be revoked. Phase 2 owes a refresh mechanism
+    (decided during M3, recorded in docs/mcp/phase-2-single-agent.md).
+
+    RECOMMENDED: the browser never sees a bearer token at all. The Next.js
+    route holds the session cookie, mints a fifteen-minute token
+    server-side per request, and passes it onward. Nothing long-lived
+    exists in the browser, and "refresh" becomes "mint another one",
+    which needs no new storage.
+
+    IN PLAIN TERMS
+    Three things to decide before building. The most important: the AI
+    must not be able to approve its own actions. A human clicks the
+    button, and the shop - not the AI - issues the permission slip. If the
+    AI could issue its own, the whole safety design would be decoration.
+
+
+================================================================================
+2. WHAT THIS HALF DELIVERS
+================================================================================
+
+    NEW FILES (expected)
+
+    app/api/v1/auth/refresh/route.ts     Mint a short-lived bearer from the
+                                         signed-in session. No password.
+    app/api/assistant/route.ts           The bridge: browser <-> agent
+                                         service. Holds the session, mints
+                                         tokens, streams events back.
+    app/api/assistant/approve/route.ts   Mints an approval AFTER a human
+                                         click. Server-side only.
+    app/(store)/assistant/page.tsx       The chat page.
+    components/assistant/*.tsx           Message list, tool-activity chips,
+                                         approval card, product/order cards.
+    lib/assistant/events.ts              The event schema and its parser -
+                                         one definition, shared.
+
+    MODIFIED
+
+    app/api/v1/auth/token/route.ts       Reuse for the refresh path, or
+                                         factor the minting into a helper
+                                         both routes call.
+    scripts/scorecard.ts                 An `agent` section: workflow pass
+                                         rate, turn latency, tokens.
+
+    IN PLAIN TERMS
+    A chat page, the plumbing behind it, a way to hand the AI a
+    short-lived pass, and an approval button that only a person can press.
+
+
+================================================================================
+3. THE EVENT CONTRACT - FREEZE IT BEFORE ANYTHING CONSUMES IT
+================================================================================
+
+The design document is explicit that this is the cheapest thing to get
+wrong: the chat UI, the agent, and Phase 3's pause-and-resume payload all
+depend on the same event shape.
+
+    tool_started        which tool, and the arguments, STRUCTURED
+    tool_completed      which tool, and a summary of the result
+    approval_required   which tool, the arguments, and a token handle
+    message             assistant text
+    error               something failed, and whether a retry is sensible
+
+TWO RULES THAT ARE NOT NEGOTIABLE:
+
+  1. THE APPROVAL CARD IS RENDERED FROM THE STRUCTURED ARGUMENTS, NEVER
+     FROM AGENT PROSE. Product descriptions and reviews are written by
+     strangers and reach the agent's context. If the agent writes the words
+     next to the button, an injected review can write them too. The card
+     shows the order number the API returned - not a sentence the model
+     composed.
+
+  2. VERSION THE SCHEMA FROM THE FIRST COMMIT. Phase 3 consumes it too.
+
+    IN PLAIN TERMS
+    The chat window shows what the AI is doing as it happens. The one
+    rule that matters: the confirmation box must be built from real data -
+    the actual order number - and never from a sentence the AI wrote. A
+    review written by a stranger could otherwise put misleading words next
+    to the confirm button.
+
+
+================================================================================
+4. TASK LIST
+================================================================================
+
+Each task ends in a commit, and stops for review. Every task that changes
+behaviour must include a test that has been seen to FAIL before it passes -
+this project has already shipped, and caught, tests that could not fail.
+
+TASK 1 - FREEZE THE EVENT SCHEMA
+    Define the five event types and their fields in lib/assistant/events.ts,
+    with a parser and a version field.
+    MUST PROVE: an unknown event type is ignored rather than crashing the
+    UI, and a malformed event does not take down the stream.
+    Coordinate with the agent plan's Task 4 - the two must agree exactly.
+
+TASK 2 - SHORT-LIVED TOKENS FROM A SESSION, WITHOUT A PASSWORD
+    POST /api/v1/auth/refresh: read the session cookie, mint a 15-minute
+    bearer. Reuse the ttlSeconds clamp added in M3.
+    MUST PROVE: 401 without a session; the minted token is accepted by
+    /api/v1/auth/whoami; the lifetime is 15 minutes, not 7 days; and the
+    route never accepts a password.
+
+TASK 3 - THE BRIDGE ROUTE
+    POST /api/assistant: takes a user utterance, mints a token, calls the
+    agent service, streams events back to the browser.
+    MUST PROVE: it refuses an unauthenticated caller; it never puts the
+    bearer token in a response body; a dropped connection does not leave
+    the agent running with nowhere to send events.
+
+TASK 4 - THE CHAT PAGE, READ-ONLY FIRST
+    Render the event stream: messages, and tool activity as it happens. No
+    approvals yet.
+    MUST PROVE: the three low-risk workflows are usable end to end -
+    "what did I order recently", a product search, a stock check.
+
+TASK 5 - THE APPROVAL CONTROL
+    The approval card, plus POST /api/assistant/approve.
+    MUST PROVE, and these are the tests that matter most:
+      * the card's text is built from structured arguments, and an agent
+        message containing markup or instructions cannot alter it;
+      * the approve route mints for the EXACT arguments in the event, not
+        arguments supplied by the caller;
+      * a second click does not mint a second approval;
+      * declining sends nothing to the MCP server.
+
+TASK 6 - RICH RESULTS AND PROGRESS
+    Product cards and order cards instead of prose, per the design's UX
+    list. Render from tool results, not from agent text - same reason as
+    the approval card.
+
+    Also from that list, and easy to forget because they are not features
+    so much as manners:
+      * SHOW THE PLAN for a multi-step request, updating as steps complete.
+        Visibility into what it intends, without exposing raw reasoning.
+      * PROGRESS INDICATORS for longer flows, INCLUDING FAILURE STATES with
+        explicit recovery options - Retry, Choose another, Cancel. A flow
+        that can only succeed visibly and fails silently is worse than one
+        that never started.
+    MUST PROVE: a failed tool call produces a visible failure with a way
+    forward, not a stalled spinner.
+
+TASK 6b - ASK FOR MISSING INFORMATION AS A CHOICE, NOT A PROMPT
+    When the agent needs something it does not have - which order, which
+    size - offer selectable options rather than asking the customer to type
+    an identifier. "Which order?" with cards, never "please provide your
+    order ID".
+    MUST PROVE: the options come from a tool result, so the customer can
+    only choose something that actually exists and belongs to them.
+
+TASK 7 - PERSISTENT CONTEXT
+    "The second order" should resolve without the customer repeating an id,
+    and the current context should be VISIBLE rather than silently inferred.
+    MUST PROVE: what the UI displays as the active context is what the next
+    tool call actually uses. A drift between them is the bug this task
+    exists to prevent.
+
+TASK 8 - SCORECARD
+    Extend scripts/scorecard.ts with an `agent` section - workflow pass
+    rate, turn latency, tokens per workflow - reading a results file the
+    agent repo's eval harness writes, exactly as the `mcp` section reads
+    metrics/mcp-latency.json today.
+    MUST PROVE: a workflow pass rate below 1 fails the gate absolutely,
+    with or without a previous entry. That mistake was already made once
+    in M3 and caught by a test.
+
+    IN PLAIN TERMS
+    Eight steps, each finishing with a review. The order is deliberate:
+    agree the message format, then the security plumbing, then a chat page
+    that can only read things, and only then the button that can change
+    something. The riskiest piece is built last, on top of parts already
+    proven.
+
+
+================================================================================
+5. EXIT CRITERIA
+================================================================================
+
+    * A signed-in customer can hold a conversation that uses the low-risk
+      tools and get correct, own-account-only results.
+    * A cancellation requires a visible confirmation, and the confirmation
+      text is provably not written by the model.
+    * The agent cannot mint its own approval - asserted by a test, not by
+      an assumption.
+    * No bearer token is ever exposed to the browser.
+    * `npm run scorecard -- m4-single-agent --gate` exits 0.
+    * The four workflows in docs/mcp/phase-2-single-agent.md pass in the
+      eval harness (owned by the agent repo's plan).
+
+    IN PLAIN TERMS
+    Done means: a customer can chat with it, it only ever sees their own
+    data, cancelling something needs a real click, the AI cannot give
+    itself permission, and the health check still passes.
+
+
+================================================================================
+6. RISKS CARRIED IN
+================================================================================
+
+    * PROMPT INJECTION IS STILL UNMITIGATED. Reviews and product
+      descriptions are attacker-controllable and reach the model. Rendering
+      approvals from structured data (Task 5) closes one attack. It is not
+      a design pass, and the design pass is still owed.
+
+    * SESSION TOKENS CANNOT BE REVOKED. Fifteen-minute lifetimes bound the
+      exposure. Nothing removes it.
+
+    * RATE LIMITING IS PER-INSTANCE AND IN MEMORY. An agent can issue many
+      more calls per minute than a person. Re-check the budgets before this
+      is exposed to real traffic.
+
+    * THE MCP SERVER'S APPROVAL NONCES ARE PER-PROCESS. Single-use holds
+      for one replica only.
+
+    IN PLAIN TERMS
+    Four known problems carried into this stage. The serious one is that
+    product reviews are written by the public and read by the AI, and
+    nobody has closed that door yet - this stage narrows it, but does not
+    shut it.
+
+================================================================================

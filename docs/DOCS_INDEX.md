@@ -14,6 +14,7 @@ every deployable service lives under `apps/` and is self-contained.
 | `docs/mcp/` | The MCP server and agentic layer: phase docs, tool surface, open risks |
 | `docs/TECHNICAL_SNAPSHOT.txt` | One-document overview of the whole system, technical and plain-language |
 | `docs/ITERATIONS.txt` | The build history: what worked, what failed, and how to rebuild it |
+| `docs/PLAN_M4_STOREFRONT.txt` | The plan for the next milestone — this repo's half of the agent work |
 | `Makefile` | Repo-level entry point; each target delegates into `apps/web` |
 | `docker-compose.yml` | Local Postgres + Redis + the web image |
 
