@@ -32,6 +32,52 @@ const PUBLIC_PRODUCT_FIELDS = [
   'variants',
 ] as const;
 
+// The routes behind this view disagreed about the type of a price.
+// searchProducts converts Decimal to Number for the storefront, which
+// renders it and does arithmetic on it, so the list endpoint emitted
+// `999.99`; getProductById does not convert, so the Decimal reached
+// respond.ts and the detail endpoint emitted `"999.99"`. Same product,
+// two types, and the number had already lost the scale that respond.ts
+// stringifies Decimals to preserve.
+//
+// Settled here rather than in server/queries/products.ts, because that
+// module also feeds the storefront: product-card.tsx does
+// `comparePrice > price`, and on strings that is a lexicographic
+// comparison -- "999.99" > "1099.99" is true -- which would invert every
+// sale badge on the site.
+const MONEY_FIELDS = ['price', 'comparePrice'] as const;
+
+function money(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+
+  // Checked before the duck-type below, because a JS number has toFixed too.
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toFixed(2) : value;
+  }
+
+  // Already a string: either a price respond.ts stringified, or something
+  // this module has no business reinterpreting. NaN is not a price.
+  if (typeof value === 'string') return value;
+
+  // Prisma's Decimal, duck-typed the same way respond.ts does it, so this
+  // module stays free of a runtime dependency on the client.
+  const candidate = value as { toFixed?: unknown };
+  if (typeof candidate.toFixed === 'function') {
+    return (candidate.toFixed as (digits: number) => string)(2);
+  }
+
+  return value;
+}
+
+function withMoneyNormalised(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>
+): void {
+  for (const field of MONEY_FIELDS) {
+    if (field in source) target[field] = money(source[field]);
+  }
+}
+
 export function publicProduct(
   product: Record<string, unknown>
 ): Record<string, unknown> {
@@ -39,6 +85,21 @@ export function publicProduct(
 
   for (const field of PUBLIC_PRODUCT_FIELDS) {
     if (field in product) view[field] = product[field];
+  }
+
+  withMoneyNormalised(product, view);
+
+  // Variants carry their own prices, and a caller comparing a variant
+  // price to its product price should not have to handle two types.
+  if (Array.isArray(view.variants)) {
+    view.variants = (view.variants as Record<string, unknown>[]).map(
+      variant => {
+        if (variant === null || typeof variant !== 'object') return variant;
+        const copy = { ...variant };
+        withMoneyNormalised(variant, copy);
+        return copy;
+      }
+    );
   }
 
   return view;
