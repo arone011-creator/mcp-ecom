@@ -19,6 +19,7 @@ import {
 import { join } from 'node:path';
 
 export type Timing = { p50: number; p95: number };
+export type McpTiming = Timing & { successRate: number };
 
 export type Entry = {
   milestone: string;
@@ -46,6 +47,11 @@ export type Entry = {
   typeErrors: number;
   build: { durationMs: number; standaloneBytes: number };
   latency: Record<string, Timing> | null;
+  // Per-tool MCP timings, present only on milestones where the sweep ran.
+  // Not comparable to the HTTP probes above: these include MCP framing and
+  // a second network hop, and are measured over varied queries because
+  // searchProducts sits behind a 300s cache.
+  mcp?: Record<string, McpTiming> | null;
   acceptedRegressions: string[];
   note?: string;
 };
@@ -53,7 +59,11 @@ export type Entry = {
 const SCORECARD_PATH = join(process.cwd(), 'metrics', 'scorecard.json');
 const BUILD_TOLERANCE = 1.1;
 const LATENCY_TOLERANCE = 1.25;
-const PROBE_PATHS = ['/', '/search?q=iphone', '/api/v1/products?q=shoes&limit=5'];
+const PROBE_PATHS = [
+  '/',
+  '/search?q=iphone',
+  '/api/v1/products?q=shoes&limit=5',
+];
 const LATENCY_SAMPLES = 20;
 
 export function percentile(values: number[], p: number): number {
@@ -87,6 +97,16 @@ export function compare(previous: Entry | undefined, current: Entry): string[] {
   // this the harness reports "no regressions" on an undeployable app.
   if (current.build.standaloneBytes === 0) {
     flag('build', 'build produced no output (next build failed)');
+  }
+
+  // A tool that fails some of the time is broken, not slow. Gated
+  // absolutely: no previous number makes a 0.8 success rate acceptable.
+  if (current.mcp) {
+    for (const [tool, timing] of Object.entries(current.mcp)) {
+      if (timing.successRate < 1) {
+        flag(`mcp.${tool}`, `mcp.${tool} success rate: ${timing.successRate}`);
+      }
+    }
   }
 
   if (!previous) return found;
@@ -152,6 +172,27 @@ export function compare(previous: Entry | undefined, current: Entry): string[] {
         flag(
           `latency.${path}`,
           `latency ${path} p95: ${before.p95}ms -> ${timing.p95}ms`
+        );
+      }
+    }
+  }
+
+  if (previous.mcp && current.mcp) {
+    for (const [tool, before] of Object.entries(previous.mcp)) {
+      const after = current.mcp[tool];
+
+      // A tool that vanished cannot regress on latency, which is exactly
+      // why it needs its own check -- otherwise deleting a tool is the
+      // easiest way to pass this gate.
+      if (!after) {
+        flag(`mcp.${tool}`, `mcp.${tool} missing from this sweep`);
+        continue;
+      }
+
+      if (after.p95 > before.p95 * LATENCY_TOLERANCE) {
+        flag(
+          `mcp.${tool}`,
+          `mcp ${tool} p95: ${before.p95}ms -> ${after.p95}ms`
         );
       }
     }
@@ -253,6 +294,15 @@ async function collectLatency(baseUrl: string) {
   return results;
 }
 
+// Written by the sweep in the mcp-ecom-agent-layer repository. Read from
+// disk rather than shelled out to, so this harness never needs a Python
+// environment to capture a milestone.
+function loadMcp(): Entry['mcp'] {
+  const path = join(process.cwd(), 'metrics', 'mcp-latency.json');
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, 'utf-8'));
+}
+
 function loadEntries(): Entry[] {
   if (!existsSync(SCORECARD_PATH)) return [];
   return (JSON.parse(readFileSync(SCORECARD_PATH, 'utf-8')).entries ??
@@ -280,12 +330,15 @@ async function main() {
   const entry: Entry = {
     milestone,
     capturedAt: new Date().toISOString(),
-    commit: execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim(),
+    commit: execSync('git rev-parse --short HEAD', {
+      encoding: 'utf-8',
+    }).trim(),
     tests,
     coverage,
     typeErrors,
     build,
     latency,
+    mcp: loadMcp(),
     acceptedRegressions: [],
   };
 
@@ -314,6 +367,13 @@ async function main() {
   if (latency) {
     for (const [path, timing] of Object.entries(latency)) {
       console.log(`  p95 ${path}  ${timing.p95}ms`);
+    }
+  }
+  if (entry.mcp) {
+    for (const [tool, timing] of Object.entries(entry.mcp)) {
+      console.log(
+        `  mcp ${tool}  p50 ${timing.p50}ms  p95 ${timing.p95}ms  ok ${timing.successRate}`
+      );
     }
   }
 

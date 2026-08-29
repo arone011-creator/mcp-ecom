@@ -1,0 +1,17 @@
+{
+  "search_products": {
+    "p50": 717,
+    "p95": 819,
+    "successRate": 1.0
+  },
+  "get_product": {
+    "p50": 687,
+    "p95": 863,
+    "successRate": 1.0
+  },
+  "check_inventory": {
+    "p50": 659,
+    "p95": 895,
+    "successRate": 1.0
+  }
+}

@@ -251,3 +251,87 @@ describe('compare', () => {
     expect(compare(entry(), current)).toHaveLength(3);
   });
 });
+
+describe('mcp gate', () => {
+  const timing = (p95: number, successRate = 1, p50 = 40) => ({
+    p50,
+    p95,
+    successRate,
+  });
+
+  it('says nothing about mcp when no sweep was captured', () => {
+    expect(compare(entry(), entry())).toEqual([]);
+  });
+
+  it('passes a fully succeeding sweep with no previous entry', () => {
+    const current = entry({ mcp: { get_cart: timing(60) } });
+
+    expect(compare(undefined, current)).toEqual([]);
+  });
+
+  it('flags a tool that stopped succeeding, with or without a baseline', () => {
+    // A tool that fails some of the time is broken, not slow. Gated
+    // absolutely, because there is no previous number that makes a 0.8
+    // success rate acceptable.
+    const current = entry({ mcp: { get_cart: timing(60, 0.8) } });
+
+    expect(compare(undefined, current)).toContainEqual(
+      expect.stringContaining('mcp.get_cart success rate')
+    );
+  });
+
+  it('flags a tool that got materially slower', () => {
+    const previous = entry({ mcp: { get_cart: timing(100) } });
+    const current = entry({ mcp: { get_cart: timing(200) } });
+
+    expect(compare(previous, current)).toContainEqual(
+      expect.stringContaining('mcp get_cart p95: 100ms -> 200ms')
+    );
+  });
+
+  it('tolerates noise inside the same window the http gate allows', () => {
+    const previous = entry({ mcp: { get_cart: timing(100) } });
+    const current = entry({ mcp: { get_cart: timing(120) } });
+
+    expect(compare(previous, current)).toEqual([]);
+  });
+
+  it('flags a tool that disappeared from the sweep', () => {
+    // Otherwise deleting a tool is the easiest way to pass this gate.
+    const previous = entry({
+      mcp: { get_cart: timing(100), get_order: timing(100) },
+    });
+    const current = entry({ mcp: { get_cart: timing(100) } });
+
+    expect(compare(previous, current)).toContainEqual(
+      expect.stringContaining('mcp.get_order missing')
+    );
+  });
+
+  it('does not flag a tool measured for the first time', () => {
+    const previous = entry({ mcp: { get_cart: timing(100) } });
+    const current = entry({
+      mcp: { get_cart: timing(100), get_order: timing(500) },
+    });
+
+    expect(compare(previous, current)).toEqual([]);
+  });
+
+  it('respects acceptedRegressions like every other gate', () => {
+    const previous = entry({ mcp: { get_cart: timing(100) } });
+    const current = entry({
+      mcp: { get_cart: timing(400) },
+      acceptedRegressions: ['mcp.get_cart'],
+    });
+
+    expect(compare(previous, current)).toEqual([]);
+  });
+
+  it('ignores a previous sweep when this milestone captured none', () => {
+    // A milestone that did not run the sweep has not regressed; it has
+    // not measured. Flagging every tool as missing would be noise.
+    const previous = entry({ mcp: { get_cart: timing(100) } });
+
+    expect(compare(previous, entry())).toEqual([]);
+  });
+});
