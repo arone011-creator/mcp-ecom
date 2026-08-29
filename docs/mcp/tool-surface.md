@@ -30,7 +30,7 @@ Every backing route below was verified to exist in `apps/web/app/api/v1/`.
 | `get_order` | `GET /api/v1/orders/{id}` | Low | Order |
 | `get_cart` | `GET /api/v1/cart` | Low | Cart |
 | `add_to_cart` | `POST /api/v1/cart` | Medium | Cart |
-| `remove_from_cart` | `DELETE /api/v1/cart` | Medium *(unsettled — see below)* | Cart |
+| `remove_from_cart` | `DELETE /api/v1/cart` | Medium | Cart |
 | `cancel_order` | `POST /api/v1/orders/{id}/cancel` | **High** | Order |
 
 `POST /api/v1/auth/token` is not a tool. It is how the MCP server obtains a
@@ -81,11 +81,19 @@ are the corrections, each with its reason.
 
 - `remove_from_cart`. `DELETE /api/v1/cart` exists and the source plan
   assigns the tool to the Cart agent, but it never appeared in the
-  capability map, so it has no assigned tier from either source document.
-  Medium is proposed here by symmetry with `add_to_cart` — same resource,
-  same reversibility, same "execute and inform" UX. **This is the one row
-  in the table that no source document settled; confirm it before
-  implementing rather than inheriting it from this file.**
+  capability map, so it had no tier from either source document.
+
+  **Settled at Medium during M3**, on two grounds. It is reversible — the
+  remedy for a wrong removal is to add the line back. And the API scopes
+  its `deleteMany` to the caller's own cart id, so a `productId` from the
+  query string can only ever reach their own lines; there is no argument
+  an agent could supply that reaches someone else's cart.
+
+  One implementation note that followed from the tier: unlike
+  `add_to_cart`, it sends no idempotency key. The operation is already
+  idempotent — removing a line that is gone leaves the cart in the state
+  the caller asked for — so a key would write a row per removal to protect
+  against nothing.
 
 ## Folder boundary
 

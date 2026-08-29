@@ -66,7 +66,22 @@ user, never by a caller-supplied id.
 
 `/api/v1` accepts either a bearer token or a session cookie, and an
 explicit bearer token wins over an ambient cookie. The MCP server uses the
-bearer path.
+bearer path, and passes `cookies=None` on every request so it can never
+present a second identity by accident.
+
+**Deviation, decided during M3: the token stays opaque to the MCP server.**
+This document assumed it would verify the session token out-of-band with
+`NEXTAUTH_SECRET`. Checked against the installed package, that is more
+than it sounds: NextAuth v4 does not sign a JWS, it *encrypts* a JWE —
+`new EncryptJWT(token).setProtectedHeader({ enc: "A256GCM" })` with an
+HKDF-SHA256-derived key. Reading a subject out of one in Python means a
+second implementation of NextAuth's key derivation, which is exactly the
+duplicated rule the adapter principle exists to prevent, and it would
+break silently the day NextAuth changes its salt.
+
+So M3 added `GET /api/v1/auth/whoami` and the MCP server asks. One
+implementation of identity, still `requireApiUser`, still the same trust
+root.
 
 ## 1.5 Server-side risk enforcement
 
@@ -149,9 +164,38 @@ the same tool slower has a bug, not a feature.
 
 ## Exit criteria
 
-- Every tool in [tool-surface.md](tool-surface.md) is callable from a bare
-  MCP client and returns correct, **user-scoped** data.
-- A high-risk tool call without a valid approval token fails, regardless of
-  what the caller intended.
-- No agent exists yet.
-- `npm run scorecard -- m3-mcp --gate` exits 0.
+Status as shipped on 2026-08-29.
+
+- **Partial.** Every tool is callable from a bare MCP client; nine are
+  advertised and all nine respond. Three are verified against production
+  end to end. The six needing a signed-in customer are verified against
+  mocks only — no demo credentials were supplied for the sweep.
+- **Met, for the half that matters most.** A high-risk call without a
+  valid approval token fails in production, and so does one carrying a
+  forged token. The success path — a real order cancelled behind a real
+  approval — is verified against mocks only, for the same reason.
+- **Met.** No agent exists.
+- **Met.** `npm run scorecard -- m3-mcp --gate` exits 0: 461 passed, 0 type
+  errors, no regressions against `m2-api`.
+
+Both gaps close with one command, listed in
+[README.md](README.md#the-three-phases).
+
+## What M3 changed in the storefront
+
+Phase 1 turned out not to be purely additive. Three of its own
+requirements had no server-side component, and building the MCP server on
+their absence would have meant faking them:
+
+- `GET /api/v1/auth/whoami` — identity, per §1.4 above.
+- `ttlSeconds` on `POST /api/v1/auth/token`, clamped to [60s, 7d]. These
+  JWTs cannot be revoked, so lifetime is the only lever there is.
+- An `idempotency_keys` table and a `withIdempotency` wrapper on the cart
+  and cancel routes, so a retry after a timeout does not double-apply.
+
+One unrelated bug surfaced while building against the real API: the same
+product returned `price` as a JSON number from the list endpoint and a
+string from the detail endpoint. Fixed in the API's view layer, not in the
+shared query layer, because `product-card.tsx` compares `comparePrice >
+price` and on strings that is lexicographic — `"999.99" > "1099.99"` is
+true, and every sale badge on the site would have inverted.

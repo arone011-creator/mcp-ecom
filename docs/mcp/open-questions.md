@@ -31,30 +31,61 @@ Two specifics already known:
   signs out every browser at the same time. Any token handed to an agent is
   live until it expires.
 
-## Blocking design work for Phase 1
+## Opened by Phase 1
 
-These are gaps in the source plan, not implementation details. They need
-answers before the phase starts, not during it.
+**The spent-nonce set is in process.**
+Approval tokens are single-use, enforced by a dictionary in the MCP
+server's memory. That holds for one replica. Scale the service out and a
+token becomes replayable within its TTL, because the second instance has
+never seen the nonce. The five-minute lifetime is what bounds the exposure.
+A shared store — Redis, or the database — is required before this runs on
+more than one instance.
+**Owner: before the mcp service scales past one replica.**
 
-- **Who mints the approval token?** The source plan asserted server-side
-  risk enforcement but never specified the mechanism. Must be minted by
-  non-LLM code, bound to `(session_id, tool_name, canonical_args_hash,
-  nonce, expiry)`, single-use, and validated against the actual arguments
-  of the incoming call — presence-checking alone lets an agent get approval
-  for one order and spend the token on another.
-- **Idempotency keys** on `add_to_cart` and `cancel_order`, so a retry after
-  a timeout does not double-apply.
-- **MCP transport must be HTTP/SSE with per-request auth, not stdio.** A
-  stdio transport carries one ambient identity per process, which is wrong
-  for a multi-user chat app.
+**Six of the nine tools are unverified against production.**
+They need a signed-in customer, and the M3 sweep ran without credentials.
+They pass against mocks, and this project has now had three separate bugs
+that only a live call exposed — a green mock suite is not the same claim.
+The same gap covers `cancel_order`'s success path: its refusal is verified
+live, its approval-and-cancel is not.
+→ Closes with one sweep run: `python scripts/sweep.py --url ... --api ...
+--email ... --password ...`
+
+**Railway's private network is incompatible with the HTTPS-upgrade
+middleware.**
+`middleware.ts` redirects to https whenever `x-forwarded-proto` is not
+`https`. Over `web.railway.internal` there is no proxy setting that header,
+so every internal call 301s to an address with no TLS. The MCP server
+therefore reaches the storefront over its public domain — correct, but it
+leaves Railway and comes back. Fixing it means skipping the upgrade for
+`.railway.internal` hosts, which is a change to security-relevant
+middleware and was not worth making mid-milestone.
+
+## Closed by Phase 1
+
+**~~Who mints the approval token?~~**
+`POST /approvals` on the MCP server, deliberately **not** an MCP tool, so
+an agent cannot approve itself. HMAC-signed over `(session, tool,
+args_hash, nonce, expiry)`, single-use, validated against the arguments of
+the call actually arriving. The session id is the transport's own
+`mcp-session-id`, assigned by the server at initialize rather than
+supplied by the caller. Verified by mutation: replacing the binding with a
+presence check fails four tests, including the one that spends an approval
+for order o3 on order o7.
+
+**~~Idempotency keys.~~**
+An `idempotency_keys` table with claim-then-execute semantics. The claim
+row is taken before the work runs, so two concurrent duplicates race for a
+unique constraint rather than both executing. A 5xx releases the claim — it
+is not an outcome, and storing it would make every retry replay the error.
+`add_to_cart` and `cancel_order` carry keys; `remove_from_cart` does not,
+because it is already idempotent.
+
+**~~MCP transport must be HTTP with per-request auth, not stdio.~~**
+Streamable HTTP. One `EcommerceApi` per request, never cached — a client
+held between requests is an ambient identity by another name.
 
 ## Open decisions
-
-**`remove_from_cart` has no assigned risk tier.**
-`DELETE /api/v1/cart` exists and the source plan assigns the tool to the
-Cart agent, but the tool never appeared in the capability map. Medium is
-proposed by symmetry with `add_to_cart`; no source document settled it.
-→ Confirm in Phase 1. See [tool-surface.md](tool-surface.md).
 
 **Is the Supervisor short-circuit in scope for Phase 3?**
 Letting the Supervisor answer trivial single-domain queries without a
@@ -74,6 +105,18 @@ it first.
 **~~No eval harness for tool selection.~~**
 Now a required task in Phase 2, with workflow pass rate as a scorecard gate
 rather than a manual demo run.
+
+**~~`remove_from_cart` has no assigned risk tier.~~**
+Medium, settled during M3. Reversible, and the API scopes its delete to the
+caller's own cart id. See [tool-surface.md](tool-surface.md).
+
+**~~Token lifetime.~~**
+`POST /api/v1/auth/token` now accepts `ttlSeconds`, clamped to [60s, 7d].
+The MCP path asks for fifteen minutes. This does not add revocation — it
+only shortens the window — and it creates a Phase 2 obligation: a
+conversation outlives fifteen minutes and the MCP server never sees a
+password, so **Phase 2 builds token refresh** driven by the browser
+session the chat UI already holds.
 
 ## Carried in from the web app
 

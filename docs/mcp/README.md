@@ -32,9 +32,24 @@ orchestration work*.
 
 | Phase | Doc | What it delivers | Status |
 |---|---|---|---|
-| 1 | [phase-1-mcp-layer.md](phase-1-mcp-layer.md) | MCP server. Every tool callable from a bare MCP client. No agent exists. | Not started |
+| 1 | [phase-1-mcp-layer.md](phase-1-mcp-layer.md) | MCP server. Every tool callable from a bare MCP client. No agent exists. | **Shipped** — see below |
 | 2 | [phase-2-single-agent.md](phase-2-single-agent.md) | One agent, full toolbox, structured-event chat UI, approval gating. | Not started |
 | 3 | [phase-3-multi-agent.md](phase-3-multi-agent.md) | Refactor into a LangGraph Supervisor + domain specialists. | Not started |
+
+Phase 1 shipped on 2026-08-29. All nine tools are live and callable from a
+bare MCP client, and the high-risk refusal is enforced in production. Two
+exit criteria are **partially** met, and the gap is deliberate rather than
+overlooked:
+
+- Six of the nine tools are verified against mocks but not against
+  production. They need a signed-in customer and no demo credentials were
+  supplied for the sweep. The three public tools are verified end to end.
+- `cancel_order`'s *refusal* path is verified live — with no token, and
+  with a forged one. Its *success* path, cancelling a real order behind a
+  real approval, is verified only against mocks.
+
+Closing both is one sweep run with credentials:
+`python scripts/sweep.py --url ... --api ... --email ... --password ...`
 
 Two references cut across all three:
 
