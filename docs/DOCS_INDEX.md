@@ -161,7 +161,7 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 - .gitattributes - Git line ending config
 
 ### `/docker` Directory
-- apps/web/Dockerfile - Docker image configuration
+- apps/web/docker/Dockerfile - Docker image configuration
 - docker-compose.yml - Docker services (in root)
 
 ### `/docs` Directory

@@ -256,7 +256,7 @@ mcp-ecom/
 │       ├── tests/            # unit / integration / a11y / e2e
 │       ├── metrics/          # scorecard.json -- this service's trend line
 │       ├── public/           # Static assets
-│       ├── Dockerfile        # Build context is apps/web
+│       ├── docker/           # Dockerfile (build context is apps/web)
 │       └── package.json      # npm commands run from here
 ├── docs/                     # Documentation
 ├── docker-compose.yml        # Postgres + Redis + the web image

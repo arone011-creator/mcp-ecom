@@ -34,7 +34,7 @@ services:
   app:
     build:
       context: ./apps/web
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     ports:
       - '3000:3000'
     environment:

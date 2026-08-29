@@ -192,9 +192,13 @@ Stripe integration configured for:
 
 **Railway** (this deployment)
 
-The `web` service builds from `apps/web` -- its root directory must be set
-to `/apps/web`, otherwise the builder looks for a `package.json` at the
+The `web` service builds from `apps/web`, so its root directory must be set
+to `/apps/web` -- otherwise the builder looks for a `package.json` at the
 repository root and finds none.
+
+It builds with RAILPACK, not the Dockerfile. Keep the Dockerfile in
+`apps/web/docker/`: one at `apps/web/` is auto-detected and silently
+switches the production builder.
 
 **Docker**
 ```bash
@@ -203,7 +207,7 @@ docker-compose up -d
 
 Or build manually:
 ```bash
-docker build -t mcp-ecom-web apps/web
+docker build -f apps/web/docker/Dockerfile -t mcp-ecom-web apps/web
 docker run -p 3000:3000 -e DATABASE_URL="..." mcp-ecom-web
 ```
 

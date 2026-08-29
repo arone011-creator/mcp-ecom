@@ -76,6 +76,37 @@ describe('deploy configuration', () => {
     expect(pkg.workspaces).toBeUndefined();
   });
 
+  // Railway builds this service with RAILPACK -- unless it finds a
+  // Dockerfile at the service root, in which case it silently switches to
+  // the Docker builder. That already broke one deploy: relocating
+  // docker/Dockerfile to apps/web/Dockerfile changed the production build
+  // system as a side effect of tidying, and the Dockerfile (never used in
+  // production, so never exercised) failed on the first npm ci.
+  // The Dockerfile lives under docker/ to stay out of auto-detection.
+  it('keeps the Dockerfile out of the builder auto-detection path', () => {
+    expect(existsSync(join(process.cwd(), 'Dockerfile'))).toBe(false);
+    expect(existsSync(join(process.cwd(), 'docker/Dockerfile'))).toBe(true);
+  });
+
+  // The lockfile only resolves with legacy-peer-deps, so any build that
+  // installs without .npmrc present dies on ERESOLVE.
+  it('gives the docker build the .npmrc that npm ci depends on', () => {
+    const dockerfile = readFileSync(
+      join(process.cwd(), 'docker/Dockerfile'),
+      'utf-8'
+    );
+    const copiesNpmrc = dockerfile
+      .split(/\r?\n/)
+      .some(line => line.startsWith('COPY') && line.includes('.npmrc'));
+
+    const npmrc = readFileSync(join(process.cwd(), '.npmrc'), 'utf-8').trim();
+
+    expect({ copiesNpmrc, npmrc }).toEqual({
+      copiesNpmrc: true,
+      npmrc: 'legacy-peer-deps=true',
+    });
+  });
+
   it('carries no stripe dependency into the deploy', () => {
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     expect(Object.keys(deps).filter(d => d.includes('stripe'))).toEqual([]);

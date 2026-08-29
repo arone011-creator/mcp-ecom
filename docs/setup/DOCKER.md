@@ -1,7 +1,12 @@
 # 🐳 Docker Configuration
 
-The web app's Dockerfile lives at `apps/web/Dockerfile`, beside the code it
-builds, so its build context is `apps/web`. `docker-compose.yml` stays at the
+The web app's Dockerfile lives at `apps/web/docker/Dockerfile`. Its build
+context is `apps/web` (one level up), so build it with an explicit `-f`.
+
+It sits in `docker/` rather than at `apps/web/` deliberately: Railway builds
+this service with RAILPACK, and a Dockerfile at the service root makes it
+switch to the Docker builder silently. That is a production build-system
+change nobody asked for, and it broke a deploy once. `docker-compose.yml` stays at the
 repository root because it orchestrates Postgres and Redis alongside the app.
 
 ## Files
@@ -19,7 +24,7 @@ Production-ready Docker image configuration for the Next.js application.
 **Usage:**
 ```bash
 # Build the image
-docker build -t mcp-ecom-web apps/web
+docker build -f apps/web/docker/Dockerfile -t mcp-ecom-web apps/web
 
 # Or use docker-compose (recommended)
 docker-compose up --build
@@ -91,7 +96,7 @@ For production deployment:
 
 2. **Build the image:**
    ```bash
-   docker build -t your-registry/mcp-ecom-web:latest apps/web
+   docker build -f apps/web/docker/Dockerfile -t your-registry/mcp-ecom-web:latest apps/web
    ```
 
 3. **Push to registry:**
