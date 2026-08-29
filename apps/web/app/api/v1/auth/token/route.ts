@@ -21,7 +21,28 @@ export const dynamic = 'force-dynamic';
 // Shorter than the 30-day browser session on purpose: a token that travels
 // in a header, into config files and process environments, should have a
 // smaller window of usefulness if it leaks.
-const TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+export const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
+// A minute is short enough to be useless to a leak and long enough that a
+// slow first call does not expire mid-flight.
+export const MIN_TTL_SECONDS = 60;
+
+/**
+ * Callers may ask for a shorter-lived token; the MCP server does, because
+ * a token handed to an agent cannot be revoked -- rotating NEXTAUTH_SECRET
+ * is the only kill switch and it signs out every browser.
+ *
+ * Clamped rather than rejected. Every outcome here is still a usable
+ * token, just for less time, and both directions fail towards a shorter
+ * one: an unusable value -- absent, fractional, non-numeric -- falls back
+ * to the default rather than costing the caller its round trip.
+ */
+export function clampTtl(requested: number | undefined): number {
+  if (!Number.isInteger(requested)) return DEFAULT_TTL_SECONDS;
+  const value = requested as number;
+  if (value < MIN_TTL_SECONDS) return MIN_TTL_SECONDS;
+  if (value > DEFAULT_TTL_SECONDS) return DEFAULT_TTL_SECONDS;
+  return value;
+}
 
 const ATTEMPT_WINDOW_MS = 5 * 60 * 1000;
 const IP_ATTEMPT_LIMIT = 10;
@@ -46,6 +67,10 @@ const credentialsSchema = z.object({
     .transform((value) => value.trim().toLowerCase())
     .pipe(z.string().email()),
   password: z.string().min(1).max(200),
+  // Passed through rather than validated here: clampTtl decides what is
+  // usable, and a bad lifetime should not cost the caller its credentials
+  // round trip.
+  ttlSeconds: z.unknown().optional(),
 });
 
 /**
@@ -143,19 +168,19 @@ export async function POST(req: NextRequest) {
     return fail(401, REJECTION);
   }
 
+  const ttlSeconds = clampTtl(parsed.data.ttlSeconds as number | undefined);
+
   const token = await encode({
     token: { sub: user.id, email: user.email, role: user.role },
     secret,
-    maxAge: TOKEN_MAX_AGE_SECONDS,
+    maxAge: ttlSeconds,
   });
 
   return ok({
     token,
     tokenType: 'Bearer',
-    expiresIn: TOKEN_MAX_AGE_SECONDS,
-    expiresAt: new Date(
-      Date.now() + TOKEN_MAX_AGE_SECONDS * 1000
-    ).toISOString(),
+    expiresIn: ttlSeconds,
+    expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
     user: {
       id: user.id,
       email: user.email,
