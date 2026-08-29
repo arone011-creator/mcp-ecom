@@ -143,6 +143,7 @@ npm run test:e2e      # Run Cypress tests
 
 | Guide | Description |
 |-------|-------------|
+| **[Technical Snapshot](docs/TECHNICAL_SNAPSHOT.md)** | **The whole system in one document — architecture, stack, API contract, deployment, limits. Every section has a plain-language summary.** |
 | [Quick Start](QUICKSTART.md) | Get running in 5 minutes |
 | [Dev Setup](docs/setup/DEV_SETUP.md) | Complete development environment setup |
 | [Installation](docs/setup/INSTALLATION.md) | Automated environment setup script |

@@ -12,6 +12,7 @@ every deployable service lives under `apps/` and is self-contained.
 | `apps/web/` | The Next.js storefront and `/api/v1` REST API. Its own `package.json`, `node_modules`, tests, Prisma schema and scorecard. **Run npm commands from here.** |
 | `docs/` | Everything in this index, plus the milestone plans |
 | `docs/mcp/` | The MCP server and agentic layer: phase docs, tool surface, open risks |
+| `docs/TECHNICAL_SNAPSHOT.md` | One-document overview of the whole system, technical and plain-language |
 | `Makefile` | Repo-level entry point; each target delegates into `apps/web` |
 | `docker-compose.yml` | Local Postgres + Redis + the web image |
 
@@ -22,6 +23,12 @@ They now live under `apps/web/`; the rest of those documents still holds.
 ---
 
 ## 🗺️ Navigation Guide
+
+**Want the whole picture in one document?**
+[TECHNICAL_SNAPSHOT.md](TECHNICAL_SNAPSHOT.md) — the complete architecture,
+stack, data model, API contract, deployment and known limits as of M3.
+Every section carries a plain-language summary, so it works for technical
+and non-technical readers alike.
 
 **New to the project?** Start here:
 1. [../QUICKSTART.md](../QUICKSTART.md) - Get running in 5 minutes
