@@ -3486,6 +3486,13 @@ git push origin main --tags
 
 ---
 
+> **Superseded.** The three milestone sections below (M3–M5) have been
+> merged with the original source plan into [../../mcp/](../../mcp/), which
+> is now the working reference for the agentic layer. They are kept here
+> unchanged as the record of what this plan specified. Where the two
+> disagree, the phase docs are current — they were reconciled against the
+> `/api/v1` routes that now actually exist.
+
 # M3 — MCP Server (source plan Phase 1)
 
 **Not yet broken into tasks.** Write its plan after M2 ships, using the actual `/api/v1/*` response shapes.

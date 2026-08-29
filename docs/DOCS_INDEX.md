@@ -11,6 +11,7 @@ every deployable service lives under `apps/` and is self-contained.
 |------|------------|
 | `apps/web/` | The Next.js storefront and `/api/v1` REST API. Its own `package.json`, `node_modules`, tests, Prisma schema and scorecard. **Run npm commands from here.** |
 | `docs/` | Everything in this index, plus the milestone plans |
+| `docs/mcp/` | The MCP server and agentic layer: phase docs, tool surface, open risks |
 | `Makefile` | Repo-level entry point; each target delegates into `apps/web` |
 | `docker-compose.yml` | Local Postgres + Redis + the web image |
 
@@ -31,6 +32,18 @@ They now live under `apps/web/`; the rest of those documents still holds.
 **Want to contribute?** Read:
 1. [contributing/CONTRIBUTING.md](contributing/CONTRIBUTING.md) - Contribution guidelines
 2. [contributing/HUSKY_SETUP.md](contributing/HUSKY_SETUP.md) - Pre-commit hooks setup
+
+**Building the MCP server or the agents?** Everything for that layer is
+in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
+
+| Doc | What it covers |
+|-----|----------------|
+| [mcp/phase-1-mcp-layer.md](mcp/phase-1-mcp-layer.md) | Phase 1 / M3 — the MCP server |
+| [mcp/phase-2-single-agent.md](mcp/phase-2-single-agent.md) | Phase 2 / M4 — one agent, full toolbox |
+| [mcp/phase-3-multi-agent.md](mcp/phase-3-multi-agent.md) | Phase 3 / M5 — Supervisor + specialists |
+| [mcp/tool-surface.md](mcp/tool-surface.md) | The capability map and risk tiers (canonical) |
+| [mcp/open-questions.md](mcp/open-questions.md) | Risks carried across phases, and who closes each |
+| [mcp/appendix-a-agent-patterns.md](mcp/appendix-a-agent-patterns.md) | Multi-agent pattern reference |
 
 **Understanding the project?** Check:
 1. [../README.md](../README.md) - Project overview
@@ -73,7 +86,7 @@ They now live under `apps/web/`; the rest of those documents still holds.
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| [.env.example](../.env.example) | Environment variables template | Developers |
+| [.env.example](../apps/web/.env.example) | Environment variables template | Developers |
 | [Makefile](../Makefile) | Development automation commands | Developers |
 | [docker-compose.yml](../docker-compose.yml) | Docker services configuration | DevOps |
 
@@ -91,7 +104,7 @@ They now live under `apps/web/`; the rest of those documents still holds.
 
 ### "I just want to start development"
 1. ⚡ [../QUICKSTART.md](../QUICKSTART.md)
-2. 📝 [../.env.example](../.env.example)
+2. 📝 [../.env.example](../apps/web/.env.example)
 3. 💡 [contributing/CHEAT_SHEET.md](contributing/CHEAT_SHEET.md)
 
 ### "I want to understand the codebase"
@@ -163,47 +176,47 @@ They now live under `apps/web/`; the rest of those documents still holds.
 ## 🔍 Finding Specific Information
 
 ### Database
-- Setup: [DEV_SETUP.md](DEV_SETUP.md) → Database Setup
-- Commands: [CHEAT_SHEET.md](CHEAT_SHEET.md) → Database Commands
-- Schema: [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
-- Migrations: [Makefile](Makefile) → make db-migrate
+- Setup: [DEV_SETUP.md](setup/DEV_SETUP.md) → Database Setup
+- Commands: [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) → Database Commands
+- Schema: [PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md)
+- Migrations: [Makefile](../Makefile) → make db-migrate
 
 ### Testing
-- Setup: [DEV_SETUP.md](DEV_SETUP.md) → Testing
-- Commands: [CHEAT_SHEET.md](CHEAT_SHEET.md) → Testing Patterns
-- Results: [TEST_RESULTS.md](TEST_RESULTS.md)
-- CI/CD: [.github/workflows/ci.yml](.github/workflows/ci.yml)
+- Setup: [DEV_SETUP.md](setup/DEV_SETUP.md) → Testing
+- Commands: [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) → Testing Patterns
+- Results: [TEST_RESULTS.md](project/TEST_RESULTS.md)
+- CI/CD: no CI workflow is configured in this repository
 
 ### Deployment
-- Docker: [docker-compose.yml](docker-compose.yml)
+- Docker: [docker-compose.yml](../docker-compose.yml)
 - Vercel: [README.md](README.md) → Deployment
-- Environment: [.env.example](.env.example)
-- CI/CD: [.github/workflows/deploy.yml](.github/workflows/deploy.yml)
+- Environment: [.env.example](../apps/web/.env.example)
+- CI/CD: deploys run from Railway, not a committed workflow
 
 ### Code Quality
-- Standards: [CONTRIBUTING.md](CONTRIBUTING.md) → Code Standards
-- Linting: [CHEAT_SHEET.md](CHEAT_SHEET.md) → Code Quality
-- Pre-commit: [HUSKY_SETUP.md](HUSKY_SETUP.md)
-- TypeScript: [tsconfig.json](tsconfig.json)
+- Standards: [CONTRIBUTING.md](contributing/CONTRIBUTING.md) → Code Standards
+- Linting: [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) → Code Quality
+- Pre-commit: [HUSKY_SETUP.md](contributing/HUSKY_SETUP.md)
+- TypeScript: [tsconfig.json](../apps/web/tsconfig.json)
 
 ---
 
 ## 🆕 What's New (March 2025)
 
 ### New Documentation Created
-✨ [QUICKSTART.md](QUICKSTART.md) - 5-minute setup  
-✨ [DEV_SETUP.md](DEV_SETUP.md) - Complete guide  
-✨ [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute  
-✨ [CHEAT_SHEET.md](CHEAT_SHEET.md) - Quick reference  
-✨ [HUSKY_SETUP.md](HUSKY_SETUP.md) - Pre-commit hooks  
-✨ [ROADMAP.md](ROADMAP.md) - Future plans  
-✨ [REVAMP_SUMMARY.md](REVAMP_SUMMARY.md) - Improvements summary  
-✨ [Makefile](Makefile) - Automation commands  
-✨ [.gitattributes](.gitattributes) - Git configuration  
+✨ [QUICKSTART.md](../QUICKSTART.md) - 5-minute setup  
+✨ [DEV_SETUP.md](setup/DEV_SETUP.md) - Complete guide  
+✨ [CONTRIBUTING.md](contributing/CONTRIBUTING.md) - How to contribute  
+✨ [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) - Quick reference  
+✨ [HUSKY_SETUP.md](contributing/HUSKY_SETUP.md) - Pre-commit hooks  
+✨ [ROADMAP.md](project/ROADMAP.md) - Future plans  
+✨ [REVAMP_SUMMARY.md](project/REVAMP_SUMMARY.md) - Improvements summary  
+✨ [Makefile](../Makefile) - Automation commands  
+✨ [.gitattributes](../.gitattributes) - Git configuration  
 
 ### Enhanced Documentation
-📝 [.env.example](.env.example) - Now with detailed comments  
-📝 [.gitignore](.gitignore) - Updated for venv and test artifacts  
+📝 [.env.example](../apps/web/.env.example) - Now with detailed comments  
+📝 [.gitignore](../.gitignore) - Updated for venv and test artifacts  
 📝 [README.md](README.md) - Added documentation section  
 
 ---

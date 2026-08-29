@@ -148,6 +148,7 @@ npm run test:e2e      # Run Cypress tests
 | [Installation](docs/setup/INSTALLATION.md) | Automated environment setup script |
 | [Contributing](docs/contributing/CONTRIBUTING.md) | How to contribute |
 | [Cheat Sheet](docs/contributing/CHEAT_SHEET.md) | Quick command reference |
+| [MCP & Agents](docs/mcp/README.md) | The MCP server and agentic layer, phase by phase |
 | [Project Structure](docs/project/PROJECT_STRUCTURE.md) | Detailed code organization |
 | [Roadmap](docs/project/ROADMAP.md) | Future plans |
 | [Docs Index](docs/DOCS_INDEX.md) | Complete documentation index |
