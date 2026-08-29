@@ -1,6 +1,8 @@
 # 🐳 Docker Configuration
 
-This folder contains Docker-related files for containerization and deployment.
+The web app's Dockerfile lives at `apps/web/Dockerfile`, beside the code it
+builds, so its build context is `apps/web`. `docker-compose.yml` stays at the
+repository root because it orchestrates Postgres and Redis alongside the app.
 
 ## Files
 
@@ -17,7 +19,7 @@ Production-ready Docker image configuration for the Next.js application.
 **Usage:**
 ```bash
 # Build the image
-docker build -f docker/Dockerfile -t nextjs-ecommerce .
+docker build -t mcp-ecom-web apps/web
 
 # Or use docker-compose (recommended)
 docker-compose up --build
@@ -89,7 +91,7 @@ For production deployment:
 
 2. **Build the image:**
    ```bash
-   docker build -f docker/Dockerfile -t your-registry/nextjs-ecommerce:latest .
+   docker build -t your-registry/mcp-ecom-web:latest apps/web
    ```
 
 3. **Push to registry:**

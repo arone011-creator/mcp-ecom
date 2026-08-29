@@ -3,6 +3,9 @@
 
 .PHONY: help install dev build start test clean
 
+# The Next.js app lives in apps/web; the repo root is for cross-service files.
+WEB := apps/web
+
 # Default target
 help: ## Show this help message
 	@echo "Available commands:"
@@ -10,52 +13,52 @@ help: ## Show this help message
 
 # Setup & Installation
 install: ## Install dependencies
-	npm install
+	cd $(WEB) && npm install
 
 setup: ## Complete initial setup (install, env, database)
 	@echo "🚀 Setting up development environment..."
-	npm install
-	@if [ ! -f .env ]; then \
+	cd $(WEB) && npm install
+	@if [ ! -f $(WEB)/.env ]; then \
 		echo "📝 Creating .env file..."; \
-		cp .env.example .env; \
+		cp $(WEB)/.env.example $(WEB)/.env; \
 		echo "⚠️  Please edit .env with your configuration"; \
 	fi
 	@echo "✅ Setup complete! Run 'make db-setup' to initialize the database."
 
 # Development
 dev: ## Start development server
-	npm run dev
+	cd $(WEB) && npm run dev
 
 build: ## Build for production
-	npm run build
+	cd $(WEB) && npm run build
 
 start: ## Start production server
-	npm start
+	cd $(WEB) && npm start
 
 # Database
 db-setup: ## Setup database (migrate + seed)
 	@echo "🗄️  Setting up database..."
-	npx prisma generate
-	npx prisma migrate dev
-	npm run db:seed
+	cd $(WEB) && npx prisma generate
+	cd $(WEB) && npx prisma migrate dev
+	cd $(WEB) && npm run db:seed
 	@echo "✅ Database ready!"
 
 db-migrate: ## Run database migrations
-	npx prisma migrate dev
+	cd $(WEB) && npx prisma migrate dev
 
 db-reset: ## Reset database (WARNING: deletes all data)
 	@echo "⚠️  This will delete all data. Press Ctrl+C to cancel, or Enter to continue."
 	@read confirm
-	npx prisma migrate reset --force
+	cd $(WEB) && npx prisma migrate reset --force
 
 db-seed: ## Seed database with sample data
-	npm run db:seed
+	cd $(WEB) && npm run db:seed
 
 db-studio: ## Open Prisma Studio to view/edit data
-	npm run db:studio
+	cd $(WEB) && npm run db:studio
 
 db-generate: ## Generate Prisma Client
-	npx prisma generate
+	cd $(WEB) && npx prisma generate
 
 # Docker
 docker-up: ## Start all Docker services
@@ -79,69 +82,69 @@ docker-clean: ## Remove all Docker containers and volumes
 
 # Testing
 test: ## Run all tests
-	npm test
+	cd $(WEB) && npm test
 
 test-unit: ## Run unit tests
-	npm run test:unit
+	cd $(WEB) && npm run test:unit
 
 test-watch: ## Run tests in watch mode
-	npm run test:watch
+	cd $(WEB) && npm run test:watch
 
 test-e2e: ## Run E2E tests with Cypress
-	npm run test:e2e
+	cd $(WEB) && npm run test:e2e
 
 test-e2e-open: ## Open Cypress UI
-	npm run test:e2e:open
+	cd $(WEB) && npm run test:e2e:open
 
 test-a11y: ## Run accessibility tests
-	npm run test:a11y
+	cd $(WEB) && npm run test:a11y
 
 # Code Quality
 lint: ## Run linter
-	npm run lint
+	cd $(WEB) && npm run lint
 
 lint-fix: ## Fix linting issues
-	npm run lint -- --fix
+	cd $(WEB) && npm run lint -- --fix
 
 format: ## Format code with Prettier
-	npm run format
+	cd $(WEB) && npm run format
 
 format-check: ## Check code formatting
-	npm run format:check
+	cd $(WEB) && npm run format:check
 
 type-check: ## Run TypeScript type checking
-	npm run type-check
+	cd $(WEB) && npm run type-check
 
 # Quality Checks (run before commit)
 check: ## Run all quality checks (lint, format, type-check)
 	@echo "🔍 Running quality checks..."
-	npm run format:check
-	npm run lint
-	npm run type-check
+	cd $(WEB) && npm run format:check
+	cd $(WEB) && npm run lint
+	cd $(WEB) && npm run type-check
 	@echo "✅ All checks passed!"
 
 pre-commit: ## Run pre-commit checks (same as above + tests)
 	@echo "🔍 Running pre-commit checks..."
-	npm run format:check
-	npm run lint
-	npm run type-check
-	npm run test:unit
+	cd $(WEB) && npm run format:check
+	cd $(WEB) && npm run lint
+	cd $(WEB) && npm run type-check
+	cd $(WEB) && npm run test:unit
 	@echo "✅ Ready to commit!"
 
 # Cleanup
 clean: ## Clean build artifacts and caches
 	@echo "🧹 Cleaning..."
-	rm -rf .next
-	rm -rf node_modules/.cache
-	rm -rf coverage
-	rm -rf dist
-	rm -rf build
-	rm -rf .turbo
+	rm -rf $(WEB)/.next
+	rm -rf $(WEB)/node_modules/.cache
+	rm -rf $(WEB)/coverage
+	rm -rf $(WEB)/dist
+	rm -rf $(WEB)/build
+	rm -rf $(WEB)/.turbo
 	@echo "✅ Cleaned!"
 
 clean-all: clean ## Clean everything including node_modules
 	@echo "🧹 Deep cleaning..."
-	rm -rf node_modules
+	rm -rf $(WEB)/node_modules
 	@echo "✅ Deep cleaned! Run 'make install' to reinstall."
 
 # Python venv (if using Python scripts)
@@ -164,12 +167,12 @@ open: ## Open the application in browser
 # Production
 prod-build: ## Build for production with optimizations
 	@echo "🏗️  Building for production..."
-	NODE_ENV=production npm run build
+	cd $(WEB) && NODE_ENV=production npm run build
 	@echo "✅ Production build complete!"
 
 prod-start: ## Start production server
 	@echo "🚀 Starting production server..."
-	NODE_ENV=production npm start
+	cd $(WEB) && NODE_ENV=production npm start
 
 # Git helpers
 git-reset-hard: ## Reset to last commit (WARNING: loses changes)

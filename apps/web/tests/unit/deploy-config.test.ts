@@ -4,7 +4,7 @@
 // generated Prisma client at both points the deploy fails at import time,
 // which is a slow and confusing way to discover a one-line config
 // problem. These assertions are the cheap guard.
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 const pkg = JSON.parse(
@@ -49,6 +49,31 @@ describe('deploy configuration', () => {
       'utf-8'
     );
     expect(nextConfig).toMatch(/output:\s*'standalone'/);
+  });
+
+  // The web app moved to apps/web so a second service (the MCP server) can
+  // sit beside it. The move only stays safe while apps/web remains its own
+  // project root: Next.js resolves the standalone entrypoint relative to the
+  // tracing root, so promoting the repository root into a package -- an npm
+  // workspaces manifest, a stray package.json -- nests the emitted server
+  // under the package path and Railway's `node server.js` stops finding it.
+  it('keeps apps/web as its own project root, not a workspace member', () => {
+    const repoRoot = join(process.cwd(), '..', '..');
+
+    for (const manifest of [
+      'package.json',
+      'pnpm-workspace.yaml',
+      'lerna.json',
+    ]) {
+      expect({
+        manifest,
+        exists: existsSync(join(repoRoot, manifest)),
+      }).toEqual({ manifest, exists: false });
+    }
+
+    // Its own lockfile, resolved from its own directory.
+    expect(existsSync(join(process.cwd(), 'package-lock.json'))).toBe(true);
+    expect(pkg.workspaces).toBeUndefined();
   });
 
   it('carries no stripe dependency into the deploy', () => {

@@ -20,6 +20,10 @@ git remote add upstream https://github.com/SatvikPraveen/Nextjs-Ecommerce.git
 ### 2. Setup Development Environment
 
 ```bash
+# The Next.js app is apps/web -- there is no package.json at the repo root,
+# so every npm and npx command below runs from there.
+cd apps/web
+
 # Install dependencies
 npm install
 
@@ -231,34 +235,49 @@ Brief description of what this PR does
 ## 📁 Project Structure
 
 ```
-Nextjs-Ecommerce/
-├── app/                   # Next.js App Router
-│   ├── (store)/          # Store pages (products, cart, checkout)
-│   ├── (account)/        # User account (profile, orders)
-│   ├── admin/            # Admin dashboard
-│   └── api/              # API routes (webhooks, external integrations)
-├── components/           # React components
-│   └── ui/              # Reusable UI components (shadcn/ui)
-├── lib/                 # Utility functions, configurations
-├── server/              # Server-side code
-│   ├── actions/         # Server Actions (mutations)
-│   └── queries/         # Database queries (reads)
-├── prisma/              # Database schema & migrations
-├── tests/               # Test suites
-│   ├── unit/           # Unit tests
-│   ├── integration/    # Integration tests
-│   ├── a11y/           # Accessibility tests
-│   └── e2e/            # Cypress end-to-end tests
-├── public/             # Static assets
-├── docker/             # Docker configuration
-└── docs/               # Documentation
+mcp-ecom/
+├── apps/
+│   └── web/                  # The Next.js service -- self-contained
+│       ├── app/              # Next.js App Router
+│       │   ├── (store)/      # Store pages (products, cart, checkout)
+│       │   ├── (account)/    # User account (profile, orders)
+│       │   ├── admin/        # Admin dashboard
+│       │   └── api/
+│       │       ├── v1/       # Public REST API (consumed by the MCP server)
+│       │       ├── auth/     # NextAuth
+│       │       └── stripe/   # Payment webhooks
+│       ├── components/       # React components (ui/ is shadcn/ui)
+│       ├── lib/              # Utility functions, configurations
+│       ├── server/
+│       │   ├── actions/      # Server Actions (mutations, cookie identity)
+│       │   ├── orders/       # Rules shared by actions and API routes
+│       │   └── queries/      # Database queries (reads)
+│       ├── prisma/           # Database schema & migrations
+│       ├── tests/            # unit / integration / a11y / e2e
+│       ├── metrics/          # scorecard.json -- this service's trend line
+│       ├── public/           # Static assets
+│       ├── Dockerfile        # Build context is apps/web
+│       └── package.json      # npm commands run from here
+├── docs/                     # Documentation
+├── docker-compose.yml        # Postgres + Redis + the web image
+└── Makefile                  # Repo-level entry point, delegates into apps/web
 ```
+
+Each deployable service gets its own directory under `apps/`, with its own
+dependencies and its own scorecard. Nothing is hoisted to the root, so
+`apps/web` still sees itself as the project root -- which is what keeps
+Next.js's `output: 'standalone'` emitting `.next/standalone/server.js`
+rather than a nested path.
 
 ### Key Conventions
 
 - **Server Actions** (`server/actions/`) for mutations (create, update, delete)
 - **Server Queries** (`server/queries/`) for data fetching
-- **API Routes** only for webhooks or third-party integrations
+- **API Routes** for webhooks, third-party integrations, and `/api/v1` --
+  the versioned REST surface that external clients and the MCP server call.
+  `/api/v1` authenticates from a bearer token or a session cookie, so it must
+  never delegate to a Server Action (those resolve identity from the cookie
+  alone); shared rules live in `server/orders/` and similar modules.
 - **Server Components** by default, Client Components only when needed
 
 ## 🎨 Tech Stack

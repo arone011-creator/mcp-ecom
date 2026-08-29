@@ -9,9 +9,10 @@ Get up and running in 5 minutes!
 ```bash
 # 1. Clone the repo
 git clone <your-repo-url>
-cd Nextjs-Ecommerce
+cd mcp-ecom
 
-# 2. One command setup!
+# 2. One command setup! (make runs from the repo root and delegates
+#    into apps/web for you)
 make setup
 
 # 3. Configure .env (edit with your values)
@@ -31,17 +32,18 @@ make dev
 ### Option 2: Using npm
 
 ```bash
-# 1. Clone and install
+# 1. Clone and install. The Next.js app is apps/web -- npm has no
+#    package.json at the repo root, so run everything from there.
 git clone <your-repo-url>
-cd Nextjs-Ecommerce
+cd mcp-ecom/apps/web
 npm install
 
 # 2. Setup environment
 cp .env.example .env
 # Edit .env with your configuration
 
-# 3. Setup database
-docker-compose up -d postgres  # or use local PostgreSQL
+# 3. Setup database (compose lives at the repo root, one level up)
+(cd ../.. && docker-compose up -d postgres)  # or use local PostgreSQL
 npx prisma generate
 npx prisma migrate dev
 npm run db:seed
@@ -156,8 +158,8 @@ Once you're up and running:
 
 2. **Explore the code:**
    - Check out [docs/project/PROJECT_STRUCTURE.md](docs/project/PROJECT_STRUCTURE.md)
-   - Browse the components in `components/`
-   - Look at server actions in `server/actions/`
+   - Browse the components in `apps/web/components/`
+   - Look at server actions in `apps/web/server/actions/`
 
 3. **Make it yours:**
    - Customize the branding
@@ -169,14 +171,11 @@ Once you're up and running:
 
 ## 🚀 Deployment
 
-### Deploy to Vercel (Fastest)
+### Deploy to Railway (this project)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/SatvikPraveen/Nextjs-Ecommerce)
-
-1. Click the button above
-2. Connect your GitHub repo
-3. Add environment variables
-4. Deploy!
+The `web` service builds from `apps/web`. Set the service's root directory
+to `/apps/web` -- a builder pointed at the repository root will not find a
+`package.json` and the build fails before it starts.
 
 ### Deploy with Docker
 

@@ -2,6 +2,24 @@
 
 Complete guide to all documentation in this project.
 
+## 📁 Repository Layout
+
+This is a multi-service repository. The root holds only cross-service files;
+every deployable service lives under `apps/` and is self-contained.
+
+| Path | What it is |
+|------|------------|
+| `apps/web/` | The Next.js storefront and `/api/v1` REST API. Its own `package.json`, `node_modules`, tests, Prisma schema and scorecard. **Run npm commands from here.** |
+| `docs/` | Everything in this index, plus the milestone plans |
+| `Makefile` | Repo-level entry point; each target delegates into `apps/web` |
+| `docker-compose.yml` | Local Postgres + Redis + the web image |
+
+Documents written before this reorganization describe paths such as
+`app/`, `components/` and `prisma/` as living at the repository root.
+They now live under `apps/web/`; the rest of those documents still holds.
+
+---
+
 ## 🗺️ Navigation Guide
 
 **New to the project?** Start here:
@@ -130,7 +148,7 @@ Complete guide to all documentation in this project.
 - .gitattributes - Git line ending config
 
 ### `/docker` Directory
-- docker/Dockerfile - Docker image configuration
+- apps/web/Dockerfile - Docker image configuration
 - docker-compose.yml - Docker services (in root)
 
 ### `/docs` Directory

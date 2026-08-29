@@ -43,9 +43,10 @@
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/SatvikPraveen/Nextjs-Ecommerce.git
-cd Nextjs-Ecommerce
+# Clone the repository, then enter the web app -- every npm command below
+# runs from apps/web, which is a self-contained Next.js project.
+git clone https://github.com/arone011-creator/mcp-ecom.git
+cd mcp-ecom/apps/web
 
 # Install dependencies
 npm install
@@ -79,37 +80,40 @@ STRIPE_PUBLISHABLE_KEY="pk_test_..."
 STRIPE_SECRET_KEY="sk_test_..."
 ```
 
-See [.env.example](.env.example) for complete configuration.
+See [apps/web/.env.example](apps/web/.env.example) for complete configuration.
 
 ## 📁 Project Structure
 
+The repository root holds only cross-service files. Each deployable service
+owns a directory under `apps/`, self-contained down to its own
+`package.json` and `node_modules`.
+
 ```
-app/
-├── (store)/          # Customer-facing pages
-│   ├── products/     # Product catalog
-│   ├── cart/         # Shopping cart
-│   └── search/       # Search results
-├── (account)/        # User account pages
-├── admin/            # Admin dashboard
-├── api/              # API routes
-│   ├── newsletter/   # Newsletter subscription
-│   ├── stripe/       # Payment webhooks
-│   └── auth/         # Authentication
-└── not-found.tsx     # Custom 404 page
+apps/web/             # The Next.js storefront + /api/v1 -- one Railway service
+├── app/
+│   ├── (store)/      # Customer-facing pages: products, cart, search
+│   ├── (account)/    # User account pages
+│   ├── admin/        # Admin dashboard
+│   ├── api/
+│   │   ├── v1/       # The REST API the MCP server consumes
+│   │   ├── stripe/   # Payment webhooks
+│   │   └── auth/     # Authentication
+│   └── not-found.tsx
+├── components/       # shadcn/ui primitives + feature components
+├── server/
+│   ├── actions/      # Server actions (identity from the session cookie)
+│   ├── orders/       # Shared rules, callable by both actions and routes
+│   └── queries/      # Database queries
+├── lib/              # auth, prisma, cache, validators
+├── prisma/           # schema.prisma + seed.ts
+├── tests/            # unit / integration / a11y / e2e
+├── metrics/          # scorecard.json -- this service's trend line
+├── scripts/          # scorecard, admin password rotation
+└── package.json      # npm commands run from here, not the repo root
 
-components/
-├── ui/               # shadcn/ui components
-├── newsletter-form.tsx
-├── product-card.tsx
-└── cart-drawer.tsx
-
-server/
-├── actions/          # Server actions
-└── queries/          # Database queries
-
-prisma/
-├── schema.prisma     # Database schema
-└── seed.ts           # Sample data
+docs/                 # Documentation and milestone plans
+docker-compose.yml    # Local Postgres + Redis + the web image
+Makefile              # Repo-level entry point; delegates into apps/web
 ```
 
 ## 🛠️ Scripts
@@ -185,12 +189,11 @@ Stripe integration configured for:
 
 ## 🐳 Deployment
 
-**Vercel** (Recommended)
-```bash
-# Connect your GitHub repo to Vercel
-# Add environment variables in dashboard
-# Deploy automatically on push
-```
+**Railway** (this deployment)
+
+The `web` service builds from `apps/web` -- its root directory must be set
+to `/apps/web`, otherwise the builder looks for a `package.json` at the
+repository root and finds none.
 
 **Docker**
 ```bash
@@ -199,8 +202,8 @@ docker-compose up -d
 
 Or build manually:
 ```bash
-docker build -t nextjs-ecommerce .
-docker run -p 3000:3000 -e DATABASE_URL="..." nextjs-ecommerce
+docker build -t mcp-ecom-web apps/web
+docker run -p 3000:3000 -e DATABASE_URL="..." mcp-ecom-web
 ```
 
 ## 🤝 Contributing
