@@ -1,0 +1,541 @@
+================================================================================
+ITERATIONS - mcp-ecom
+How this project was actually built. As of 29 August 2026, M3 complete.
+================================================================================
+
+The technical snapshot says what this system IS. This document says how it got
+that way: what worked, what broke, what the mistakes cost, and how somebody new
+would rebuild it from nothing.
+
+It is deliberately unflattering. A build log that records only the successes
+teaches nobody anything, and the failures here were more instructive than the
+features.
+
+Every section ends with an "IN PLAIN TERMS" note. A non-technical reader can
+follow this entire document by reading only those.
+
+    IN PLAIN TERMS
+    The other document explains what was built. This one explains how it
+    went - including the parts that went badly, which is where most of the
+    useful lessons are.
+
+
+CONTENTS
+--------
+     1. The shape of the work
+     2. What worked
+     3. What failed - inherited defects
+     4. What failed - tests that could not fail
+     5. What failed - environment and configuration
+     6. What failed - mistakes in the process itself
+     7. The one mistake made twice
+     8. What it cost, in numbers
+     9. How to replicate this project from scratch
+    10. What we would do differently
+    11. Where it stands now
+
+
+================================================================================
+1. THE SHAPE OF THE WORK
+================================================================================
+
+Four milestones over roughly three days of working sessions. Each ends with a
+recorded scorecard entry, and cannot close while any metric has regressed.
+
+    MILESTONE   WHAT IT DELIVERED                          TESTS   COVERAGE
+    ----------  -----------------------------------------  ------  --------
+    M0          Baseline. Fork an existing open-source        167    70.89%
+                storefront, audit it, measure it.
+    M1          Make it actually work, and deploy it.         245    67.48%
+                Sign-in, cart, checkout, orders, search.
+                Live on Railway + Supabase.
+    M2          A versioned REST API (/api/v1) that a         405    73.36%
+                non-browser client can call.
+    M3          An MCP server so an AI can use the shop.      461    75.09%
+
+The order matters and was chosen deliberately. The AI layer was built LAST,
+on top of an API that was built on top of a storefront that was proven to
+work. Each layer could only be wrong in one way at a time.
+
+    IN PLAIN TERMS
+    The work was done in four stages: get an existing shop working, put it
+    online, give it a proper interface for other programs, then let an AI
+    use that interface. Doing them in this order means that when something
+    broke, it was obvious which layer was at fault.
+
+
+================================================================================
+2. WHAT WORKED
+================================================================================
+
+Six practices, each of which paid for itself more than once.
+
+(a) THE SCORECARD RATCHET
+
+    `npm run scorecard -- <milestone> --gate` records tests, coverage, type
+    errors, build size and live latency, and EXITS NON-ZERO IF ANY NUMBER GOT
+    WORSE. A milestone cannot close on a regression unless it is written down
+    as accepted, with a reason.
+
+    This is not a report. It is a gate. It caught a real coverage regression
+    at M1 and forced the harness itself to be fixed rather than the number
+    explained away.
+
+(b) MUTATION TESTING - BREAK IT AND SEE IF ANYONE NOTICES
+
+    Every security-relevant behaviour was verified by deliberately breaking
+    the code and confirming a test failed. Not once was this ceremonial:
+
+      * Ten auth assertions were found to be incapable of failing, because
+        they asserted "not a 302" against middleware that only ever emits 307.
+        Under the old assertion, flipping the admin check to an unreachable
+        value still passed. Under the repaired ones it killed four tests.
+      * The approval-token binding in M3 was checked by replacing it with a
+        simple presence check. Four tests failed, including the one that
+        spends an approval for order #3 on order #7.
+
+    A test you have not seen fail is a guess.
+
+(c) LIVE CHECKS AGAINST THE DEPLOYED SYSTEM
+
+    The test suite mocks the database wholesale. It cannot see integration
+    bugs, and four times it did not:
+
+      1. Two different types for a product price, depending on the endpoint.
+      2. A cache that would have served one user's orders to another.
+      3. A missing session header that broke every order cancellation.
+      4. A private network configuration that broke every product lookup.
+
+    All four were found by calling the real thing. None by a green suite.
+
+(d) WRITING PLANS AGAINST THE CODE, NOT AGAINST DOCUMENTS
+
+    The M3 plan was written by reading the actual API routes rather than the
+    design documents describing them. That caught three places where the
+    design was wrong about its own system: money arrives as a string, cart
+    adds increment rather than replace, and an unauthorised order returns 404
+    rather than 403.
+
+    A plan written from documentation would have shipped all three as bugs.
+
+(e) A NUMBERED FINDINGS LOG, INCLUDING RETRACTIONS
+
+    Fifty-nine numbered findings, each with evidence. Three were later proven
+    WRONG and are marked as retracted rather than deleted - including a
+    confident claim that the upstream build was broken, which turned out to
+    be a self-inflicted environment variable.
+
+    Keeping the retraction is what makes the rest of the log trustworthy.
+
+(f) SEPARATING THE TOOLS FROM THE AI
+
+    Phase 1 built nine capabilities and NO agent. Building both together
+    would confound two unknowns - do my tools work, and does my orchestration
+    work. When the AI arrives it will sit on a layer already measured.
+
+    IN PLAIN TERMS
+    Six habits that repeatedly paid off. The most valuable: never trust a
+    test you have not watched fail, and never trust a passing test suite as
+    proof that the live system works. Most of the serious bugs here were
+    invisible to the tests and obvious the moment someone made a real
+    request.
+
+
+================================================================================
+3. WHAT FAILED - INHERITED DEFECTS
+================================================================================
+
+The project began as a fork of an existing open-source storefront that looked
+finished. It was not. The audit found a shop that could not be used at all.
+
+    * NOBODY COULD LOG IN. The seed script computed a password hash and never
+      assigned it. Both demo accounts had no password, and the auth code
+      returns null when a password is missing.
+
+    * THE ADMIN GUARD COULD NEVER PASS. Middleware compared the role against
+      lowercase 'admin'; the database only ever produces 'ADMIN'.
+
+    * FOUR PAGES REFERENCED BUT NEVER BUILT. /auth/signin, /checkout, /orders
+      and /access-denied were linked from code and protected by middleware,
+      and every one of them 404'd.
+
+    * /products 404'D, AND ELEVEN COMPONENTS LINKED TO IT - including the home
+      page's main call to action and the breadcrumb on every product page.
+
+    * /search RETURNED HTTP 500. A server component was passing a click
+      handler to a client component.
+
+    * THE CART HAD TWO SOURCES OF TRUTH. Adding to the cart wrote to the
+      database; the cart page read from browser local storage. They never
+      spoke to each other.
+
+    * THE ORDER READ PATH WAS BROKEN, AND THE BREAK WAS HIDING A DATA LEAK.
+      Orders were wrapped in a cache that resolved the user INSIDE the cached
+      function, so the first caller's orders would have been served to
+      everyone. It was broken in a way that prevented the leak from firing.
+
+    * AN UNGUARDED ORDER MODULE. Four functions took a raw order id with no
+      ownership or role check, one returning the full user record. It was dead
+      code - nothing imported it - but a single future import would have
+      published all four as callable endpoints. A loaded gun, not a fired one.
+
+    * A STRIPE MODULE THAT CRASHED ON IMPORT if its API key was unset.
+
+    IN PLAIN TERMS
+    The starting point looked like a working shop and was not one. You could
+    not sign in, could not check out, could not search, and the cart showed
+    the wrong contents. Some of the broken parts were hiding worse problems -
+    one bug was accidentally preventing a privacy leak, and would have caused
+    one the moment somebody "fixed" it.
+
+
+================================================================================
+4. WHAT FAILED - TESTS THAT COULD NOT FAIL
+================================================================================
+
+The inherited project reported a passing test suite. Much of it was theatre.
+
+    * TEN ASSERTIONS THAT COULD NEVER FAIL. They asserted the response was
+      "not a 302" against middleware that only ever emits 307. The assertion
+      held whether the request was allowed or blocked.
+
+    * .tsx TEST FILES WERE INVISIBLE. Both test projects matched `.ts` only. A
+      `.tsx` test did not fail and did not run - it simply was not collected.
+      Proven with a deliberately failing canary file that the suite ignored.
+
+    * REACT'S HOOKS WERE GLOBALLY MOCKED, replaced with stubs returning
+      undefined. Any component with state threw on render. The existing tests
+      never noticed because they only rendered static markup.
+
+    * JSX WAS COMPILED WITH THE WRONG RUNTIME, so every component render
+      failed with "React is not defined".
+
+    * A TEST FILE THAT NEVER CALLED THE THING IT TESTED. The "Checkout API
+      Integration" block asserted properties of its own fixture objects.
+
+    * ROLE FIXTURES THAT THE DATABASE CANNOT PRODUCE. Tests used 'admin' and
+      'customer'; the schema only allows 'USER' and 'ADMIN'. The suite passed
+      because the bug and the test agreed with each other, and both disagreed
+      with the database.
+
+    THE LESSON: a green suite is a claim, not evidence. Before trusting an
+    inherited one, break the code on purpose and check that something goes
+    red.
+
+    IN PLAIN TERMS
+    The project arrived with tests that all passed, and a large share of them
+    were checking nothing at all. One set of tests agreed with the bug they
+    were supposed to catch. This is why "all tests pass" was never accepted
+    here as proof that anything worked.
+
+
+================================================================================
+5. WHAT FAILED - ENVIRONMENT AND CONFIGURATION
+================================================================================
+
+The most expensive failures were not in the code.
+
+    * NODE_ENV IN AN ENV FILE COST ~16 BUILDS AND SIX WRONG HYPOTHESES.
+      Next.js sets NODE_ENV itself per command. Hardcoding it to 'development'
+      and then running a production build produced a misleading error about
+      importing <Html> outside _document. Next printed a warning naming the
+      exact cause - "You are using a non-standard NODE_ENV value" - and the
+      warning was ignored while the error message was taken at face value.
+
+      THE LESSON: when a tool warns you about a thing and then fails, the
+      warning is the diagnosis, not noise.
+
+    * THE APP AND ITS DATABASE WERE ON OPPOSITE SIDES OF THE PACIFIC. Railway
+      deployed to San Francisco; Supabase was in Singapore. Every query
+      crossed an ocean.
+
+    * connection_limit=1 SERIALISED EVERY DATABASE OPERATION. It came from a
+      template written earlier in the project and was copied into production
+      verbatim. Invisible with one user; catastrophic with any concurrency.
+
+      Those two together: server-side p95 went from 4,314-9,614ms to 45-159ms.
+      Neither fix touched application code. The measurement that cracked it
+      was noticing that /robots.txt, which touches nothing, was exactly as
+      slow as pages that touch everything.
+
+    * A .env.production FILE COMMITTED TO A REPOSITORY THAT WAS ABOUT TO GO
+      PUBLIC. Placeholders only, but a booby trap regardless. Removed before
+      publication.
+
+    * MOVING A DOCKERFILE SILENTLY CHANGED THE PRODUCTION BUILD SYSTEM.
+      Relocating it beside the code it built put it at the Railway service
+      root, and Railway switched its builder from RAILPACK to Docker without
+      announcement. The only symptom was a failed build several minutes later.
+      The Dockerfile had also been broken all along - it never copied .npmrc,
+      so the install could not resolve dependencies - and nobody knew because
+      Railway had never used it.
+
+    * THE HEADER PERFORMED A DATABASE WRITE ON EVERY PAGE VIEW, because
+      reading the cart count went through a function that upserts a cart row
+      before reading it.
+
+    IN PLAIN TERMS
+    The slowest, hardest problems were settings, not code. The site was once
+    forty times slower than it should have been for two reasons: the servers
+    were on the wrong continent from the database, and a setting limited it to
+    one database conversation at a time. Neither was visible in the code. The
+    fix was to measure where the time actually went, rather than guess.
+
+
+================================================================================
+6. WHAT FAILED - MISTAKES IN THE PROCESS ITSELF
+================================================================================
+
+Not inherited. Made during this build, and worth recording for that reason.
+
+    * THE MEASURING HARNESS MEASURED THE WRONG THING. The coverage gate
+      compared percentages alone, so it could not distinguish "we covered
+      less code" from "we started measuring more code". A legitimate fix
+      made two more files visible to the coverage tool, the denominator grew,
+      the percentage fell, and the gate failed a milestone that had actually
+      improved. Fixed by recording absolute covered/total counts alongside
+      percentages.
+
+    * A METRIC WAS GATED THAT WAS TOO NOISY TO GATE. Build duration measured
+      three times on identical code came in at 195s, 220s and 255s. It failed
+      a milestone on a 12.9% rise that was pure noise. Now recorded but not
+      gated.
+
+    * A PLAN INSTRUCTED ITS OWN AUTHOR TO REPEAT AN EARLIER MISTAKE. The
+      deploy task said to set NODE_ENV=production on Railway - the exact
+      mistake that had cost sixteen builds earlier in the same project,
+      written into the plan before the lesson was learned.
+
+    * THE PRIVATE-NETWORK CHANGE WAS REPORTED AS WORKING WHEN IT WAS NOT.
+      See section 7.
+
+    IN PLAIN TERMS
+    Several mistakes were self-inflicted, including two in the tool built to
+    catch mistakes. The health-check tool once failed a milestone that had
+    genuinely improved, because it was measuring the wrong thing. Recording
+    these matters as much as recording the successes - a build log that only
+    lists other people's errors is not honest.
+
+
+================================================================================
+7. THE ONE MISTAKE MADE TWICE
+================================================================================
+
+VERIFYING AGAINST A CONTAINER THAT WAS ALREADY BEING REPLACED.
+
+    FIRST TIME (M1). The initial live check after a deploy reported 500 errors
+    on four routes. Those 500s were real - but they came from the PREVIOUS
+    container, which was still serving while the new one rolled out. The
+    conclusion drawn was wrong in both directions.
+
+    SECOND TIME (M3). Switching the MCP server to Railway's private network
+    appeared to work: a manual check returned products, and a latency run
+    reported a healthy 690ms. Both were served by the OLD container, still
+    using the public address. The readiness probe - "does the service answer?"
+    - was satisfied by the very container being replaced.
+
+    The truth came out only when a script exercised every tool and found all
+    of them failing with a redirect error.
+
+    THE LESSON: "it responds" is not "the new version responds". A readiness
+    check must assert something only the NEW deployment can satisfy - a
+    version string, a new endpoint, a changed response - or it is measuring
+    the past.
+
+    IN PLAIN TERMS
+    The same mistake was made twice, months apart: checking whether a change
+    worked while the old version was still running, and believing the answer.
+    Both times the check was technically successful and completely
+    misleading. The fix is to check for something that only the NEW version
+    could possibly say.
+
+
+================================================================================
+8. WHAT IT COST, IN NUMBERS
+================================================================================
+
+    Findings recorded                                          59
+    Of those, later retracted as wrong                          3
+    Builds burned on a single environment variable            ~16
+    Wrong hypotheses before that root cause was found            6
+    Bugs found by live checks that tests could not see           4
+    Times a deploy was verified against a stale container        2
+    Speed improvement from two config values (server p95)  ~40x
+    Tests at the start / at the end                      167 / 461
+
+    IN PLAIN TERMS
+    A rough accounting. The single most expensive item was one wrong setting
+    that took sixteen attempts and six wrong theories to identify - far more
+    costly than any actual feature. The biggest single win was also a
+    setting, not code: two configuration changes made the site roughly forty
+    times faster.
+
+
+================================================================================
+9. HOW TO REPLICATE THIS PROJECT FROM SCRATCH
+================================================================================
+
+For somebody new, starting with nothing. This is the order that worked, with
+the traps marked.
+
+PREREQUISITES
+
+    Node.js 20 or newer, Python 3.11+, Git, a GitHub account.
+    Accounts: Supabase (database), Railway (hosting). Both have free tiers.
+    No payment provider is needed - this project takes no payments.
+
+STEP 1 - GET A STOREFRONT AND DO NOT TRUST IT
+
+    Fork or clone a Next.js + Prisma storefront. Then, before writing a single
+    feature, AUDIT IT:
+
+      * Run the test suite. Then break something on purpose and confirm a test
+        goes red. If nothing does, the suite is decoration.
+      * Try every user journey by hand: sign in, search, add to cart, check
+        out, view orders. Note what 404s or 500s.
+      * Grep for functions that take a user id or record id as an argument and
+        do not check who is asking.
+
+    Budget real time for this. In this project the audit produced 59 findings
+    and was the single highest-value phase.
+
+STEP 2 - SET UP THE DATABASE
+
+    Create a Supabase project. Choose its region FIRST and write it down -
+    your hosting must match it later.
+
+    You need two connection strings, and mixing them up causes confusing
+    failures:
+
+        DATABASE_URL   transaction pooler, port 6543, add ?pgbouncer=true
+        DIRECT_URL     session pooler,     port 5432
+
+    Do NOT use the db.<ref>.supabase.co host - it is IPv6-only and will not
+    resolve from many hosts.
+
+    Do NOT set connection_limit=1. It serialises every database operation.
+
+    Then: npx prisma migrate deploy, and seed.
+
+STEP 3 - MAKE THE CORE JOURNEY ACTUALLY WORK
+
+    Before deploying anything, get one complete path working locally: sign in,
+    find a product, add it to a cart, check out, see the order.
+
+    This is where most of the inherited bugs surface. Fix them one at a time,
+    each with a test, and each test verified by breaking the code.
+
+    Never put NODE_ENV in an env file. Next.js sets it per command; overriding
+    it breaks the production build with an error that names the wrong cause.
+
+STEP 4 - PUT MEASUREMENT IN PLACE BEFORE YOU DEPLOY
+
+    Build the scorecard harness now, not later. It should record tests,
+    coverage (absolute counts, not just percentages), type errors, build
+    output size and live latency, and refuse to pass when a number regresses.
+
+    Do not gate on build duration - it is too noisy to be useful.
+
+STEP 5 - DEPLOY
+
+    Railway, connected to the GitHub repository, deploying from main.
+
+      * Put the service region in the SAME region as the database.
+      * Set the root directory if the repo holds more than one service.
+      * Do NOT leave a Dockerfile at the service root unless you intend it -
+        its mere presence changes the build system silently.
+      * Run migrations by hand (`prisma migrate deploy`), not from the build.
+      * Check the repository for committed .env files before going public.
+
+    Then verify against the LIVE site, not the tests - and make sure your
+    check can tell the new deployment from the old one.
+
+STEP 6 - ADD A VERSIONED API
+
+    An AI cannot call Next.js server actions: they are addressed by a
+    build-generated hash that changes on every build. A stable HTTP API is
+    required.
+
+    Design decisions that proved right here:
+
+      * One envelope for everything: {data} or {error}.
+      * Money as a STRING, never a float.
+      * Allow-list the fields that go out, never deny-list.
+      * Return 404, not 403, for records the caller does not own - a 403
+        confirms the record exists.
+      * Resolve identity in exactly ONE function that every route calls.
+
+STEP 7 - ADD THE AI LAYER, LAST, AND SEPARATELY
+
+    See the ITERATIONS document in the mcp-ecom-agent-layer repository for
+    this half. In short: build the tools with no AI, prove them from a plain
+    client, and only then add the agent.
+
+    IN PLAIN TERMS
+    A recipe for someone starting fresh. The order matters more than any
+    individual step: audit before you build, make it work before you deploy,
+    put measurement in place before you optimise, and add the AI last. The
+    two most common ways to lose days are trusting an inherited test suite,
+    and putting your servers in a different part of the world from your
+    database.
+
+
+================================================================================
+10. WHAT WE WOULD DO DIFFERENTLY
+================================================================================
+
+    * AUDIT THE TEST SUITE FIRST, NOT THE CODE. The tests were more misleading
+      than the code, and finding that out early would have reframed everything
+      after it.
+
+    * MEASURE BEFORE OPTIMISING. Weeks of care went into query efficiency
+      while the real cost was an ocean and a connection limit. The single most
+      informative measurement was that a page touching nothing was as slow as
+      a page touching everything.
+
+    * MAKE READINESS CHECKS VERSION-AWARE from the beginning. Two deploys were
+      verified against the container being replaced.
+
+    * TEST AGAINST A REAL DATABASE SOMEWHERE. Every integration test here
+      mocks Prisma. That is fast and it caught nothing that mattered about
+      integration; all four such bugs came from live calls.
+
+    * TREAT ENVIRONMENT CONFIGURATION AS CODE. The three most expensive
+      problems - NODE_ENV, region, connection limit - were all settings, and
+      none was covered by a test or a review.
+
+    IN PLAIN TERMS
+    Five things to do differently next time. The theme running through them:
+    the code was rarely the problem. The tests, the settings and the
+    deployment process caused far more trouble than the features did.
+
+
+================================================================================
+11. WHERE IT STANDS NOW
+================================================================================
+
+    Storefront                                    live, 461 tests passing
+    Versioned API                                 live, 9 endpoints
+    MCP server                                    live, 9 tools
+    Agent                                         not built - Phase 2
+    Scorecard                                     m3-mcp, no regressions
+
+Known open items, each recorded in docs/mcp/open-questions.md with an owner:
+
+    * Prompt injection through product reviews is unmitigated, and must be
+      solved before the AI layer is used for real.
+    * Session tokens cannot be revoked.
+    * Six of the nine AI tools are verified against mocks, not production -
+      they need a demo customer login.
+    * Rate limiting is per-instance, so it multiplies if the service scales.
+    * Railway's private network is incompatible with the HTTPS-upgrade
+      middleware.
+
+    IN PLAIN TERMS
+    The shop works, it is online, and an AI can use it through a controlled
+    set of nine actions. The AI itself is the next stage. Five known problems
+    are written down rather than forgotten, and the most serious is that
+    product reviews - written by the public - are read by the AI, which is a
+    door nobody has closed yet.
+
+================================================================================

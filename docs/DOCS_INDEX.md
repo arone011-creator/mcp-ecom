@@ -13,6 +13,7 @@ every deployable service lives under `apps/` and is self-contained.
 | `docs/` | Everything in this index, plus the milestone plans |
 | `docs/mcp/` | The MCP server and agentic layer: phase docs, tool surface, open risks |
 | `docs/TECHNICAL_SNAPSHOT.txt` | One-document overview of the whole system, technical and plain-language |
+| `docs/ITERATIONS.txt` | The build history: what worked, what failed, and how to rebuild it |
 | `Makefile` | Repo-level entry point; each target delegates into `apps/web` |
 | `docker-compose.yml` | Local Postgres + Redis + the web image |
 
@@ -29,6 +30,11 @@ They now live under `apps/web/`; the rest of those documents still holds.
 stack, data model, API contract, deployment and known limits as of M3.
 Every section carries a plain-language summary, so it works for technical
 and non-technical readers alike.
+
+**Want to know how it got built?**
+[ITERATIONS.txt](ITERATIONS.txt) — the build history: what worked, what
+failed, what the mistakes cost, and a step-by-step recipe for replicating
+the whole project from scratch.
 
 **New to the project?** Start here:
 1. [../QUICKSTART.md](../QUICKSTART.md) - Get running in 5 minutes
