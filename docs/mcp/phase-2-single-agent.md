@@ -36,6 +36,24 @@ never happened.
    without the user repeating an order ID, and the current context
    (customer, order, action) is *shown*, not silently inferred.
 
+### Token refresh — required, decided during M3
+
+M3 gave `POST /api/v1/auth/token` a `ttlSeconds` parameter and the MCP
+server asks for fifteen minutes, because a token handed to an agent cannot
+be revoked: the JWTs are stateless, and rotating `NEXTAUTH_SECRET` signs
+out every browser at once. A short lifetime is the only lever there is.
+
+That leaves a gap this phase has to close. A conversation outlives fifteen
+minutes, and the MCP server never sees the user's password, so it cannot
+mint a replacement itself. **Phase 2 builds a refresh mechanism** rather
+than raising the floor — the chat UI holds the browser session and can
+exchange it for a fresh short-lived token whenever the current one nears
+expiry.
+
+Raising the TTL instead was considered and rejected: it trades a bounded,
+solvable problem for a permanently larger blast radius on a credential
+that has no kill switch.
+
 ## 2.3 Risk tier → agent behaviour
 
 | Tier | Behaviour |
