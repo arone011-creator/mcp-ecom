@@ -6,18 +6,22 @@ where `/api/v1` ends.
 
 ## Where the code will live
 
-Nothing here is built yet. When Phase 1 starts, the MCP server becomes a
-second deployable service beside the web app:
+The MCP server lives in its own repository, not in this one:
 
-```
-apps/
-├── web/     # Next.js storefront + /api/v1   (shipped, live)
-└── mcp/     # Python 3.11 + FastMCP          (Phase 1, not started)
-```
+- **[arone011-creator/mcp-ecom-agent-layer](https://github.com/arone011-creator/mcp-ecom-agent-layer)**
+  — Python 3.11 + FastMCP. Phase 1 shipped; Phase 2 and 3 will be built
+  there too.
+- This repository — the Next.js storefront and `/api/v1`, in `apps/web/`.
 
-`apps/mcp/` will be self-contained the same way `apps/web/` is — its own
-dependency manifest, its own tests, its own scorecard. See
-[../DOCS_INDEX.md](../DOCS_INDEX.md) for the repository layout.
+It was built here first, as `apps/mcp/`, and split out at the end of M3
+when it became a second deployable. The split is a deliberate boundary:
+the agent layer depends on the storefront's public API and nothing else,
+so a change here that the API contract survives cannot break it.
+
+**The documents in this folder stay here.** They are the design record for
+both repositories — the phase plans, the capability map, and the reasoning
+behind decisions the code can only show the result of. See
+[../DOCS_INDEX.md](../DOCS_INDEX.md) for the layout of this repository.
 
 ## The three phases
 

@@ -32,7 +32,7 @@ Python 3.11 + FastMCP + httpx + Pydantic, deployed as a second Railway
 service in the same project, calling `web` over the private network.
 
 ```
-apps/mcp/
+mcp-ecom-agent-layer/
 ├── server.py
 ├── tools/
 │   ├── products.py
@@ -48,8 +48,10 @@ Each `tools/*.py` file becomes the tool surface for one Phase 3 specialist
 (`products.py` → Product agent, and so on). This folder boundary is
 intentional and is reused, not coincidental.
 
-*(The source plan called this directory `mcp-server/`. It is `apps/mcp/`
-now, to sit beside `apps/web/` under the repository's service layout.)*
+*(The source plan called this directory `mcp-server/`, and it was built as
+`apps/mcp/` inside the storefront repository. It now lives in its own
+repository, [mcp-ecom-agent-layer](https://github.com/arone011-creator/mcp-ecom-agent-layer),
+split out at the end of M3 when it became a second deployable service.)*
 
 ## 1.4 Identity & auth
 
