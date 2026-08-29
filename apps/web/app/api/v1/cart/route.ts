@@ -18,6 +18,7 @@ import prisma from '@/lib/prisma';
 import { revalidateTag } from 'next/cache';
 import { requireApiUser } from '../_lib/session';
 import { ok, fail } from '../_lib/respond';
+import { withIdempotency } from '../_lib/idempotency';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -126,62 +127,76 @@ export async function POST(req: NextRequest) {
       return fail(400, "mode must be either 'add' or 'set'");
     }
 
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-      select: {
-        id: true,
-        status: true,
-        inventory: { select: { available: true } },
-      },
-    });
+    // Keyed on the arguments, so a retry of the same add replays instead
+    // of incrementing a second time. Without a key this runs unguarded,
+    // which is what the storefront's own fetches do.
+    // Awaited, not just returned: returning the promise from inside `try`
+    // lets a rejection escape this function's own catch, and the generic
+    // 500 below is what stops a Prisma error echoing the connection string.
+    return await withIdempotency(
+      req.headers.get('idempotency-key'),
+      user.id,
+      'cart:add',
+      { productId, quantity, mode },
+      async () => {
+        const product = await prisma.product.findUnique({
+          where: { id: productId },
+          select: {
+            id: true,
+            status: true,
+            inventory: { select: { available: true } },
+          },
+        });
 
-    // An unpublished product is reported exactly as an absent one, so this
-    // route cannot be used to discover what is coming.
-    if (!product || product.status !== 'PUBLISHED') {
-      return fail(404, 'Product not found');
-    }
+        // An unpublished product is reported exactly as an absent one, so this
+        // route cannot be used to discover what is coming.
+        if (!product || product.status !== 'PUBLISHED') {
+          return fail(404, 'Product not found');
+        }
 
-    const available = product.inventory[0]?.available ?? 0;
+        const available = product.inventory[0]?.available ?? 0;
 
-    const cart = await prisma.cart.upsert({
-      where: { userId: user.id },
-      update: {},
-      create: { userId: user.id },
-    });
+        const cart = await prisma.cart.upsert({
+          where: { userId: user.id },
+          update: {},
+          create: { userId: user.id },
+        });
 
-    const existing = await prisma.cartItem.findFirst({
-      where: { cartId: cart.id, productId, variantId: null },
-    });
+        const existing = await prisma.cartItem.findFirst({
+          where: { cartId: cart.id, productId, variantId: null },
+        });
 
-    const nextQuantity =
-      mode === 'set' ? quantity : (existing?.quantity ?? 0) + quantity;
+        const nextQuantity =
+          mode === 'set' ? quantity : (existing?.quantity ?? 0) + quantity;
 
-    // 409 rather than 400: the request is well-formed, the world just
-    // cannot satisfy it right now. An agent should re-read stock and try a
-    // smaller number, not rewrite its request.
-    if (nextQuantity > available) {
-      return fail(
-        409,
-        `Only ${available} available; cart would hold ${nextQuantity}`
-      );
-    }
+        // 409 rather than 400: the request is well-formed, the world just
+        // cannot satisfy it right now. An agent should re-read stock and try a
+        // smaller number, not rewrite its request.
+        if (nextQuantity > available) {
+          return fail(
+            409,
+            `Only ${available} available; cart would hold ${nextQuantity}`
+          );
+        }
 
-    if (existing) {
-      await prisma.cartItem.update({
-        where: { id: existing.id },
-        data: { quantity: nextQuantity },
-      });
-    } else {
-      await prisma.cartItem.create({
-        data: { cartId: cart.id, productId, quantity: nextQuantity },
-      });
-    }
+        if (existing) {
+          await prisma.cartItem.update({
+            where: { id: existing.id },
+            data: { quantity: nextQuantity },
+          });
+        } else {
+          await prisma.cartItem.create({
+            data: { cartId: cart.id, productId, quantity: nextQuantity },
+          });
+        }
 
-    revalidateTag('cart');
+        revalidateTag('cart');
 
-    // Returned rather than left for a follow-up GET: an agent that has to
-    // make a second call to see what it just did will sometimes not.
-    return ok(cartView((await loadCart(user.id)) as never));
+        // Returned rather than left for a follow-up GET: an agent that has to
+        // make a second call to see what it just did will sometimes not.
+        return ok(cartView((await loadCart(user.id)) as never));
+      }
+    );
   } catch (error) {
     console.error('POST /api/v1/cart failed:', error);
     return fail(500, 'Failed to update cart');
@@ -202,9 +217,7 @@ export async function DELETE(req: NextRequest) {
       // cart. Scoped to this cart's id either way, so a productId from
       // the query string can only ever reach the caller's own lines.
       await prisma.cartItem.deleteMany({
-        where: productId
-          ? { cartId: cart.id, productId }
-          : { cartId: cart.id },
+        where: productId ? { cartId: cart.id, productId } : { cartId: cart.id },
       });
 
       revalidateTag('cart');

@@ -8,6 +8,7 @@
 import type { NextRequest } from 'next/server';
 import { requireApiUser } from '../../../_lib/session';
 import { ok, fail } from '../../../_lib/respond';
+import { withIdempotency } from '../../../_lib/idempotency';
 import { cancelOrderFor } from '@/server/orders/cancel-order';
 
 export const runtime = 'nodejs';
@@ -46,19 +47,31 @@ export async function POST(
 
     const { id } = await params;
 
-    // The actor is the verified caller. Nothing from the body or the query
-    // string is consulted -- that is the whole reason this takes an
-    // explicit argument rather than being a server action.
-    const result = await cancelOrderFor(user.id, id);
+    // Keyed on the order, so a retry after a timeout replays the first
+    // answer instead of cancelling something twice. Awaited rather than
+    // returned: a promise returned from inside `try` escapes the catch
+    // below, and that catch is what keeps a Prisma error out of the body.
+    return await withIdempotency(
+      req.headers.get('idempotency-key'),
+      user.id,
+      'order:cancel',
+      { orderId: id },
+      async () => {
+        // The actor is the verified caller. Nothing from the body or the
+        // query string is consulted -- that is the whole reason this takes
+        // an explicit argument rather than being a server action.
+        const result = await cancelOrderFor(user.id, id);
 
-    if (!result.success) {
-      return fail(
-        STATUS_FOR_ERROR[result.error] ?? 400,
-        BODY_FOR_ERROR[result.error] ?? result.error
-      );
-    }
+        if (!result.success) {
+          return fail(
+            STATUS_FOR_ERROR[result.error] ?? 400,
+            BODY_FOR_ERROR[result.error] ?? result.error
+          );
+        }
 
-    return ok({ orderId: id, status: 'CANCELLED' });
+        return ok({ orderId: id, status: 'CANCELLED' });
+      }
+    );
   } catch (error) {
     console.error('POST /api/v1/orders/[id]/cancel failed:', error);
     return fail(500, 'Failed to cancel order');

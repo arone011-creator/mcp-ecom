@@ -318,3 +318,22 @@ model Newsletter {
 
   @@map("newsletter_subscribers")
 }
+
+model IdempotencyKey {
+  id          String   @id @default(cuid())
+  key         String
+  userId      String
+  scope       String
+  requestHash String
+  // 0 means claimed but not yet finished. A row in that state is what
+  // tells a concurrent duplicate that the work is already in flight.
+  status      Int      @default(0)
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  // Scoped by user so one caller's key cannot collide with -- or probe
+  // for -- another's, and by operation so the same key may be reused
+  // across different tools without meaning "replay that other thing".
+  @@unique([userId, scope, key])
+  @@map("idempotency_keys")
+}
