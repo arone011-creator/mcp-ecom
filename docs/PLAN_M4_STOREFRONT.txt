@@ -325,10 +325,10 @@ TASK 8 - SCORECARD
 
     IN PLAIN TERMS
     Eight steps, each finishing with a review. The order is deliberate:
-    agree the message format, then the security plumbing, then a chat page
-    that can only read things, and only then the button that can change
-    something. The riskiest piece is built last, on top of parts already
-    proven.
+    agree the message format, then the security plumbing, then a chat
+    window that can only read things, and only then the button that can
+    change something. The riskiest piece is built last, on top of parts
+    already proven.
 
 
 ================================================================================
@@ -342,6 +342,12 @@ TASK 8 - SCORECARD
     * The agent cannot mint its own approval - asserted by a test, not by
       an assumption.
     * No bearer token is ever exposed to the browser.
+    * The assistant is reachable from every page as a persistent widget,
+      not a single dedicated route, and a conversation survives
+      client-side navigation.
+    * A cart or order change made through the assistant is visible
+      everywhere else on the site immediately, through the same data path
+      a manual action would use - never a private copy.
     * `npm run scorecard -- m4-single-agent --gate` exits 0.
     * The four workflows in docs/mcp/phase-2-single-agent.md pass in the
       eval harness (owned by the agent repo's plan).
