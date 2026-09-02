@@ -181,7 +181,7 @@ depend on the same event shape.
     message             assistant text
     error               something failed, and whether a retry is sensible
 
-TWO RULES THAT ARE NOT NEGOTIABLE:
+FOUR RULES THAT ARE NOT NEGOTIABLE:
 
   1. THE APPROVAL CARD IS RENDERED FROM THE STRUCTURED ARGUMENTS, NEVER
      FROM AGENT PROSE. Product descriptions and reviews are written by
@@ -192,12 +192,26 @@ TWO RULES THAT ARE NOT NEGOTIABLE:
 
   2. VERSION THE SCHEMA FROM THE FIRST COMMIT. Phase 3 consumes it too.
 
+  3. CHAT-DRIVEN CHANGES UPDATE THE SAME DATA THE REST OF THE SITE READS,
+     NOT A PRIVATE COPY. A tool_completed event for a cart or order change
+     invalidates the same cache/query the manually-clicked cart page and
+     header badge already use. Two copies of "what's in your cart" is a
+     worse bug than a stale one - it lies to the customer about which
+     answer is real.
+
+  4. THE ASSISTANT NEVER NAVIGATES, FILTERS, OR SIGNS THE CUSTOMER IN OR
+     OUT ON ITS OWN. It can show a link to a product; it does not route
+     the customer there itself. A page changing underneath a customer
+     without them acting is worse than the assistant not doing it at all.
+
     IN PLAIN TERMS
-    The chat window shows what the AI is doing as it happens. The one
-    rule that matters: the confirmation box must be built from real data -
+    The chat window shows what the AI is doing as it happens. The rule
+    that matters most: the confirmation box must be built from real data -
     the actual order number - and never from a sentence the AI wrote. A
     review written by a stranger could otherwise put misleading words next
-    to the confirm button.
+    to the confirm button. The other two rules keep the assistant from
+    ever lying about what is really in your cart, or taking you somewhere
+    you did not ask to go.
 
 
 ================================================================================
@@ -229,18 +243,22 @@ TASK 3 - THE BRIDGE ROUTE
     bearer token in a response body; a dropped connection does not leave
     the agent running with nowhere to send events.
 
-TASK 4 - THE CHAT PAGE, READ-ONLY FIRST
-    Render the event stream: messages, and tool activity as it happens. No
-    approvals yet.
+TASK 4 - THE ASSISTANT WIDGET, READ-ONLY FIRST, MOUNTED GLOBALLY
+    AssistantProvider in app/layout.tsx; AssistantWidget rendered on every
+    page. Render the event stream: messages, and tool activity as it
+    happens. No approvals yet.
     MUST PROVE: the three low-risk workflows are usable end to end -
-    "what did I order recently", a product search, a stock check. And:
-    assistant message text renders as plain text or a tightly restricted
-    Markdown subset - no raw HTML, no auto-linkification of arbitrary
-    domains, links honoured only to this storefront's own domain. Product
-    descriptions already arrive wrapped as untrusted content by the MCP
-    server (mcp-ecom-agent-layer, docs/superpowers/specs/
-    2026-09-02-prompt-injection-design-pass.md); this task is what keeps a
-    rendering bypass from turning that into a clickable phishing link.
+    "what did I order recently", a product search, a stock check. The
+    conversation survives a client-side navigation between at least two
+    different page types (e.g. home -> a product page) without resetting
+    or dropping the connection. And: assistant message text renders as
+    plain text or a tightly restricted Markdown subset - no raw HTML, no
+    auto-linkification of arbitrary domains, links honoured only to this
+    storefront's own domain. Product descriptions already arrive wrapped
+    as untrusted content by the MCP server (mcp-ecom-agent-layer,
+    docs/superpowers/specs/2026-09-02-prompt-injection-design-pass.md);
+    this task is what keeps a rendering bypass from turning that into a
+    clickable phishing link.
 
 TASK 5 - THE APPROVAL CONTROL
     The approval card, plus POST /api/assistant/approve.
@@ -256,7 +274,10 @@ TASK 5 - THE APPROVAL CONTROL
       * the approve route mints for the EXACT arguments in the event, not
         arguments supplied by the caller;
       * a second click does not mint a second approval;
-      * declining sends nothing to the MCP server.
+      * declining sends nothing to the MCP server;
+      * nothing anywhere shows the action as completed until the server
+        confirms it happened - a High-risk action never renders
+        optimistically, unlike a Low/Medium tool result, which may.
 
 TASK 6 - RICH RESULTS AND PROGRESS
     Product cards and order cards instead of prose, per the design's UX
@@ -272,7 +293,11 @@ TASK 6 - RICH RESULTS AND PROGRESS
         that can only succeed visibly and fails silently is worse than one
         that never started.
     MUST PROVE: a failed tool call produces a visible failure with a way
-    forward, not a stalled spinner.
+    forward, not a stalled spinner. And: a cart or order change made
+    through the assistant is visible on the actual cart/orders page
+    without a manual refresh, because it went through the same data path
+    a manual action would (Rule 3, section 3) - never a private copy the
+    chat keeps to itself.
 
 TASK 6b - ASK FOR MISSING INFORMATION AS A CHOICE, NOT A PROMPT
     When the agent needs something it does not have - which order, which
