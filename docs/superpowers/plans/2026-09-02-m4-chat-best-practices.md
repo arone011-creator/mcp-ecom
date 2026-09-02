@@ -14,6 +14,21 @@
 - `mcp-ecom-web-app` (this repo) — Tasks 1-3
 - `mcp-ecom-agent-layer` (sibling repo, `../mcp-ecom-agent-layer`) — Task 4
 
+**Executed 2026-09-02. Three deviations from the text below, all to keep
+the edited documents internally consistent:**
+
+1. *Task 1, Step 1* — the replacement text as written would have produced
+   two adjacent `IN PLAIN TERMS` blocks. The document's actual style is one
+   per section, at the end; decisions (A)-(C) carry none of their own. So
+   Decision (D) got no separate block, and a sentence about it was folded
+   into the existing section-level one instead.
+2. *Task 1* — `§2`'s plain-terms line still read "A chat page", which the
+   file-list edit had just made self-contradictory. Changed to "A chat
+   window available from every page". The plan missed it.
+3. *Task 3, Step 2* — the grep found one more stale reference the plan did
+   not anticipate: the task-list plain-terms summary also said "a chat
+   page". Changed to "a chat window".
+
 ---
 
 ## File Structure
@@ -30,7 +45,7 @@
 **Files:**
 - Modify: `docs/PLAN_M4_STOREFRONT.txt`
 
-- [ ] **Step 1: Add Decision (D) — where the conversation lives**
+- [x] **Step 1: Add Decision (D) — where the conversation lives**
 
 Find:
 ```
@@ -66,7 +81,7 @@ Replace with:
     AI could issue its own, the whole safety design would be decoration.
 ```
 
-- [ ] **Step 2: Change "Three." to "Four." at the top of the section**
+- [x] **Step 2: Change "Three." to "Four." at the top of the section**
 
 Find:
 ```
@@ -78,7 +93,7 @@ Replace with:
 Four. Each changes the task breakdown, so settle them before Task 1.
 ```
 
-- [ ] **Step 3: Replace the NEW FILES list in §2**
+- [x] **Step 3: Replace the NEW FILES list in §2**
 
 Find:
 ```
@@ -104,7 +119,7 @@ Replace with:
                                          approval card, product/order cards.
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/PLAN_M4_STOREFRONT.txt
@@ -124,7 +139,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `docs/PLAN_M4_STOREFRONT.txt`
 
-- [ ] **Step 1: Add two new non-negotiable rules to §3**
+- [x] **Step 1: Add two new non-negotiable rules to §3**
 
 Find:
 ```
@@ -182,7 +197,7 @@ FOUR RULES THAT ARE NOT NEGOTIABLE:
     you didn't ask to go.
 ```
 
-- [ ] **Step 2: Rewrite Task 4 for global mounting**
+- [x] **Step 2: Rewrite Task 4 for global mounting**
 
 Find:
 ```
@@ -220,7 +235,7 @@ TASK 4 - THE ASSISTANT WIDGET, READ-ONLY FIRST, MOUNTED GLOBALLY
     clickable phishing link.
 ```
 
-- [ ] **Step 3: Add the optimistic-rendering rule to Task 5**
+- [x] **Step 3: Add the optimistic-rendering rule to Task 5**
 
 Find:
 ```
@@ -241,7 +256,7 @@ Replace with:
         optimistically, unlike a Low/Medium tool result, which may.
 ```
 
-- [ ] **Step 4: Add the shared-cache proof to Task 6**
+- [x] **Step 4: Add the shared-cache proof to Task 6**
 
 Find:
 ```
@@ -259,7 +274,7 @@ Replace with:
     chat keeps to itself.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/PLAN_M4_STOREFRONT.txt
@@ -280,7 +295,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `docs/PLAN_M4_STOREFRONT.txt`
 
-- [ ] **Step 1: Add two exit criteria**
+- [x] **Step 1: Add two exit criteria**
 
 Find:
 ```
@@ -300,12 +315,12 @@ Replace with:
     * `npm run scorecard -- m4-single-agent --gate` exits 0.
 ```
 
-- [ ] **Step 2: Verify no stale references to the dedicated page remain**
+- [x] **Step 2: Verify no stale references to the dedicated page remain**
 
 Run: `grep -n "assistant/page.tsx\|THE CHAT PAGE, READ-ONLY FIRST" docs/PLAN_M4_STOREFRONT.txt`
 Expected: no output.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/PLAN_M4_STOREFRONT.txt
@@ -323,7 +338,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 All commands in this task run with `mcp-ecom-agent-layer` as the working directory (`../mcp-ecom-agent-layer` if starting from `mcp-ecom-web-app`).
 
-- [ ] **Step 1: Add Decision (D) — the cost ceiling**
+- [x] **Step 1: Add Decision (D) — the cost ceiling**
 
 Find:
 ```
@@ -356,12 +371,12 @@ Replace with:
     issues the permission, and the AI only ever receives it.
 ```
 
-- [ ] **Step 2: Change "Three options" framing isn't affected — verify the decision count elsewhere**
+- [x] **Step 2: Change "Three options" framing isn't affected — verify the decision count elsewhere**
 
 Run: `grep -n "^(A)\|^(B)\|^(C)\|^(D)" docs/PLAN_M4_AGENT.txt`
 Expected: four lines, `(A)` through `(D)`, in order.
 
-- [ ] **Step 3: Extend the eval harness's REPORTED line**
+- [x] **Step 3: Extend the eval harness's REPORTED line**
 
 Find:
 ```
@@ -379,7 +394,7 @@ Replace with:
                    reached
 ```
 
-- [ ] **Step 4: Add the runtime-anomaly-detection risk to §7**
+- [x] **Step 4: Add the runtime-anomaly-detection risk to §7**
 
 Find:
 ```
@@ -403,7 +418,7 @@ Replace with:
       out to be a live problem rather than a theoretical one.
 ```
 
-- [ ] **Step 5: Update the risk count**
+- [x] **Step 5: Update the risk count**
 
 Find:
 ```
@@ -426,12 +441,12 @@ Replace with:
     later.
 ```
 
-- [ ] **Step 6: Verify no stale counts remain**
+- [x] **Step 6: Verify no stale counts remain**
 
 Run: `grep -n "Three decisions\|Four known problems" docs/PLAN_M4_AGENT.txt`
 Expected: no output.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add docs/PLAN_M4_AGENT.txt
@@ -452,7 +467,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Files:** none modified.
 
-- [ ] **Step 1: Review what's pending in each repo**
+- [x] **Step 1: Review what's pending in each repo**
 
 In `mcp-ecom-web-app`:
 Run: `git log --oneline origin/main..HEAD`
@@ -462,7 +477,7 @@ In `mcp-ecom-agent-layer`:
 Run: `git log --oneline origin/main..HEAD`
 Expected: the one commit from Task 4 above.
 
-- [ ] **Step 2: Push, after user confirmation**
+- [x] **Step 2: Push, after user confirmation**
 
 ```bash
 git push origin main
