@@ -114,17 +114,6 @@ export async function middleware(request: NextRequest) {
   // Add security headers
   const response = NextResponse.next();
 
-  // TEMPORARY DIAGNOSTIC -- reverted once the private-network 301 is
-  // understood.
-  response.headers.set(
-    'x-diag-forwarded-for',
-    String(request.headers.get('x-forwarded-for'))
-  );
-  response.headers.set(
-    'x-diag-forwarded-proto-2',
-    String(request.headers.get('x-forwarded-proto'))
-  );
-
   // Content Security Policy
   const cspHeader = `
     default-src 'self';
@@ -153,40 +142,41 @@ export async function middleware(request: NextRequest) {
 
   // HTTPS redirect in production
   //
-  // `x-forwarded-proto` is set by Railway's public edge, reflecting how the
-  // client actually connected -- 'http' or 'https', never absent. Railway's
-  // private network (`*.railway.internal`) has no proxy in front at all: a
-  // Wireguard tunnel straight to this container, so the header is never
-  // present there. Absence is therefore a safe, unspoofable signal for
-  // "this arrived over the private network" -- unlike the Host header,
-  // which any caller (public or private) sets freely, an outside client
-  // cannot make x-forwarded-proto vanish on a request that actually went
-  // through Railway's edge. A present-but-wrong value ('http') still means
-  // real public traffic that skipped TLS, and still redirects.
+  // Railway's private network (`*.railway.internal`, a Wireguard mesh) sets
+  // x-forwarded-proto to 'http' -- the same value a genuine public
+  // plain-HTTP request carries. Confirmed live: the two are
+  // indistinguishable by that header alone, which an earlier version of
+  // this fix got wrong by assuming private traffic left it absent.
+  //
+  // What does distinguish them, also confirmed live: x-forwarded-for.
+  // Railway sets it from the actual connection and discards whatever a
+  // caller sends -- a spoofed value in a real request to this endpoint
+  // came back as the true public IP chain, untouched. Public traffic
+  // shows a real public address (often a comma-separated chain); private-
+  // network traffic shows a single Unique Local Address (RFC 4193,
+  // fd00::/8) that only a genuine peer on Railway's Wireguard mesh can
+  // produce. That makes it, like x-forwarded-proto, a signal set from the
+  // connection rather than copied from a header -- not spoofable by a
+  // public caller forging a `.railway.internal` Host or an internal-
+  // looking IP, the way either alone would have been.
   const forwardedProto = request.headers.get('x-forwarded-proto');
+  const forwardedFor = request.headers.get('x-forwarded-for') ?? '';
+  const firstHop = (forwardedFor.split(',')[0] ?? '').trim();
+  const isRailwayPrivateNetwork = /^fd[0-9a-f]{2}:/i.test(firstHop);
 
   if (
     process.env.NODE_ENV === 'production' &&
-    forwardedProto !== null &&
-    forwardedProto !== 'https'
+    forwardedProto !== 'https' &&
+    !isRailwayPrivateNetwork
   ) {
     // `search` included deliberately: rebuilding from the pathname alone
     // dropped every query parameter, so an upgraded request arrived with
     // its filters missing and returned a cheerful 200 full of the wrong
     // results.
-    // TEMPORARY DIAGNOSTIC -- reverted once the private-network 301 is
-    // understood.
-    const diag = NextResponse.redirect(
+    return NextResponse.redirect(
       `https://${request.headers.get('host')}${request.nextUrl.pathname}${request.nextUrl.search}`,
       301
     );
-    diag.headers.set('x-diag-forwarded-proto', JSON.stringify(forwardedProto));
-    diag.headers.set('x-diag-host', String(request.headers.get('host')));
-    diag.headers.set(
-      'x-diag-all-headers',
-      JSON.stringify(Object.fromEntries(request.headers.entries()))
-    );
-    return diag;
   }
 
   // Rate limiting for sensitive routes

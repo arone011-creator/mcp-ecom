@@ -55,13 +55,19 @@ live, its approval-and-cancel is not.
 
 **~~Railway's private network is incompatible with the HTTPS-upgrade
 middleware.~~**
-Fixed: the middleware now treats `x-forwarded-proto`'s total absence, not a
-Host value, as the signal that traffic arrived over the private network —
-Railway's public edge always sets the header to something, so its complete
-absence is not spoofable by a public caller the way a Host header would be.
-`web.railway.internal` calls no longer 301 to an unreachable https address.
-The MCP server's configured API base URL has not yet been switched from the
-public domain to take advantage of it.
+Fixed, after two wrong first attempts caught by testing against the live
+service rather than trusting docs or assumption. `x-forwarded-proto` turned
+out **not** to distinguish the cases — Railway sets it to `'http'` on the
+private network exactly as a genuine public plain-HTTP request would.
+What does distinguish them, confirmed live by attempting to spoof it: Railway
+sets `x-forwarded-for` from the actual connection and discards whatever a
+caller sends. Public traffic carries a real public IP; private-network
+traffic carries a single Unique Local Address (RFC 4193, `fd00::/8`) that
+only a genuine peer on Railway's Wireguard mesh can produce. The middleware
+now keys off that. `ECOMMERCE_API_BASE_URL` has been switched to
+`http://web.railway.internal:8080` (the port matters — Railway's private
+network does not default-route the way its public domains do) and verified
+working end to end against production.
 
 **~~Who mints the approval token?~~**
 `POST /approvals` on the MCP server, deliberately **not** an MCP tool, so

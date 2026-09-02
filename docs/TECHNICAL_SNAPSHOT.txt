@@ -333,14 +333,20 @@ TWO TRAPS ALREADY PAID FOR:
     It now lives in apps/web/docker/, out of auto-detection range, with a test
     guarding its location.
 
-  * Railway's private network has no proxy setting x-forwarded-proto, so the
-    HTTPS-upgrade middleware used to redirect internal traffic to an address
-    with no TLS, forcing the MCP server to reach the storefront over its
-    public domain instead. Fixed: the middleware now treats the header's
-    total absence - only possible over the private network, since Railway's
-    public edge always sets it to something - as the signal to skip the
-    upgrade, rather than trusting a spoofable Host value. The MCP server can
-    switch to web.railway.internal once its configured API base URL changes.
+  * Railway's private network used to break the HTTPS-upgrade middleware,
+    redirecting internal traffic to an address with no TLS and forcing the
+    MCP server to reach the storefront over its public domain. Fixed, but
+    x-forwarded-proto turned out to be present ('http') on private-network
+    traffic too - the same value genuine public plain-HTTP traffic carries
+    - which cost one wrong deploy before catching it live. The signal that
+    actually works: x-forwarded-for, which Railway sets from the real
+    connection and discards whatever a caller sends. Public traffic shows a
+    real public IP; private-network traffic shows a single RFC 4193 Unique
+    Local Address (fd00::/8) only a genuine Wireguard-mesh peer produces.
+    The MCP server now reaches the storefront over
+    http://web.railway.internal:8080 (port required - the private network
+    has no default-routing the way public domains do), verified end to end
+    against production.
 
     IN PLAIN TERMS
     The code lives on GitHub. Pushing to the main branch automatically builds
