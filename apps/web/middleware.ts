@@ -114,6 +114,17 @@ export async function middleware(request: NextRequest) {
   // Add security headers
   const response = NextResponse.next();
 
+  // TEMPORARY DIAGNOSTIC -- reverted once the private-network 301 is
+  // understood.
+  response.headers.set(
+    'x-diag-forwarded-for',
+    String(request.headers.get('x-forwarded-for'))
+  );
+  response.headers.set(
+    'x-diag-forwarded-proto-2',
+    String(request.headers.get('x-forwarded-proto'))
+  );
+
   // Content Security Policy
   const cspHeader = `
     default-src 'self';
