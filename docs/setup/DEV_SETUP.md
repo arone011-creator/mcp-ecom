@@ -496,9 +496,9 @@ After setup is complete:
    - View orders
 
 2. **Review Documentation**:
-   - [README.md](./README.md) - Project overview
-   - [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) - Code organization
-   - [MODERNIZATION_2025.md](./MODERNIZATION_2025.md) - Recent updates
+   - [README.md](../../README.md) - Project overview
+   - [TECHNICAL_SNAPSHOT.txt](../TECHNICAL_SNAPSHOT.txt) - Architecture and code organization
+   - [ITERATIONS.txt](../ITERATIONS.txt) - Build history and recent changes
 
 3. **Check Test Coverage**:
    ```bash

@@ -157,7 +157,7 @@ Once you're up and running:
    - [docs/contributing/CONTRIBUTING.md](docs/contributing/CONTRIBUTING.md) - How to contribute
 
 2. **Explore the code:**
-   - Check out [docs/project/PROJECT_STRUCTURE.md](docs/project/PROJECT_STRUCTURE.md)
+   - Check out [docs/TECHNICAL_SNAPSHOT.txt](docs/TECHNICAL_SNAPSHOT.txt) for the full architecture
    - Browse the components in `apps/web/components/`
    - Look at server actions in `apps/web/server/actions/`
 

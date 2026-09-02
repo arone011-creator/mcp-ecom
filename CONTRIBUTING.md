@@ -317,7 +317,7 @@ rather than a nested path.
 
 - 📖 [Development Setup Guide](docs/setup/DEV_SETUP.md)
 - 💡 [Cheat Sheet](docs/contributing/CHEAT_SHEET.md) - Quick command reference
-- 🗂️ [Project Structure](docs/project/PROJECT_STRUCTURE.md)
+- 🗂️ [Technical Snapshot](docs/TECHNICAL_SNAPSHOT.txt) - Full architecture and code organization
 - ❓ [Open an Issue](https://github.com/SatvikPraveen/Nextjs-Ecommerce/issues)
 
 ## 📜 Code of Conduct

@@ -1,13 +1,14 @@
 # 📚 Documentation
 
-Welcome to the Next.js E-Commerce documentation!
+Welcome to the MCP-ECOM storefront documentation!
 
 ## 🗺️ Quick Navigation
 
 ### 🚀 Getting Started
 - **[/QUICKSTART.md](../QUICKSTART.md)** - Get running in 5 minutes
 - **[setup/DEV_SETUP.md](setup/DEV_SETUP.md)** - Complete development setup guide
-- **[setup/QUICK_START_2025.md](setup/QUICK_START_2025.md)** - 2025 standards quick reference
+- **[setup/INSTALLATION.md](setup/INSTALLATION.md)** - Complete environment setup
+- **[setup/DOCKER.md](setup/DOCKER.md)** - Docker setup
 
 ### 🤝 Contributing
 - **[contributing/CONTRIBUTING.md](contributing/CONTRIBUTING.md)** - How to contribute
@@ -15,16 +16,15 @@ Welcome to the Next.js E-Commerce documentation!
 - **[contributing/HUSKY_SETUP.md](contributing/HUSKY_SETUP.md)** - Pre-commit hooks setup
 
 ### 📊 Project Information
-- **[project/PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md)** - Code organization
-- **[project/ROADMAP.md](project/ROADMAP.md)** - Future plans and features
-- **[project/MODERNIZATION_2025.md](project/MODERNIZATION_2025.md)** - Quality report
-- **[project/REVAMP_SUMMARY.md](project/REVAMP_SUMMARY.md)** - 2025 improvements
-- **[project/UPGRADE_SUMMARY.md](project/UPGRADE_SUMMARY.md)** - Upgrade history
-- **[project/TEST_RESULTS.md](project/TEST_RESULTS.md)** - Test suite results
+- **[TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt)** - Complete architecture, stack, data model, API contract, deployment and known limits as of M3
+- **[ITERATIONS.txt](ITERATIONS.txt)** - The build history: what worked, what failed, how to rebuild it
+- **[PLAN_M4_STOREFRONT.txt](PLAN_M4_STOREFRONT.txt)** - The plan for the next milestone (this repo's half of the agent work)
+
+### 🤖 MCP / Agent Layer
+- **[mcp/](mcp/)** - The MCP server and agentic layer: phase docs, tool surface, open risks (start with [mcp/README.md](mcp/README.md))
 
 ### 🔍 Other Resources
 - **[DOCS_INDEX.md](DOCS_INDEX.md)** - Complete documentation index
-- **[analysis/](analysis/)** - Project analysis and reports
 
 ---
 
@@ -34,28 +34,27 @@ Welcome to the Next.js E-Commerce documentation!
 docs/
 ├── README.md (this file)
 ├── DOCS_INDEX.md
+├── TECHNICAL_SNAPSHOT.txt
+├── ITERATIONS.txt
+├── PLAN_M4_STOREFRONT.txt
 ├── setup/              # Setup and installation guides
 │   ├── DEV_SETUP.md
-│   └── QUICK_START_2025.md
+│   ├── DOCKER.md
+│   └── INSTALLATION.md
 ├── contributing/       # Contributing guides
 │   ├── CONTRIBUTING.md
 │   ├── CHEAT_SHEET.md
 │   └── HUSKY_SETUP.md
-├── project/           # Project documentation
-│   ├── PROJECT_STRUCTURE.md
-│   ├── ROADMAP.md
-│   ├── MODERNIZATION_2025.md
-│   ├── REVAMP_SUMMARY.md
-│   ├── UPGRADE_SUMMARY.md
-│   └── TEST_RESULTS.md
-└── analysis/          # Analysis reports
-    ├── ANALYSIS.md
-    ├── COMPLETION_REPORT.md
-    ├── PROJECT_HEALTH_REPORT.md
-    ├── QUICK_REFERENCE.txt
-    ├── README.md
-    ├── REMAINING_FIXES.md
-    └── START_HERE.md
+├── mcp/                # MCP server and agent-layer docs
+│   ├── README.md
+│   ├── phase-1-mcp-layer.md
+│   ├── phase-2-single-agent.md
+│   ├── phase-3-multi-agent.md
+│   ├── tool-surface.md
+│   ├── open-questions.md
+│   ├── appendix-a-agent-patterns.md
+│   └── source/
+└── superpowers/plans/  # Dated implementation plans
 ```
 
 ---
@@ -72,15 +71,19 @@ docs/
 2. [contributing/HUSKY_SETUP.md](contributing/HUSKY_SETUP.md)
 3. [setup/DEV_SETUP.md](setup/DEV_SETUP.md)
 
-### Understanding the codebase?
-1. [project/PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md)
-2. [project/ROADMAP.md](project/ROADMAP.md)
+### Understanding the codebase and current architecture?
+1. [TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt)
+2. [ITERATIONS.txt](ITERATIONS.txt)
 3. [../README.md](../README.md)
 
-### Planning or managing?
-1. [project/ROADMAP.md](project/ROADMAP.md)
-2. [project/MODERNIZATION_2025.md](project/MODERNIZATION_2025.md)
-3. [project/REVAMP_SUMMARY.md](project/REVAMP_SUMMARY.md)
+### Building the MCP server or the agents?
+1. [mcp/README.md](mcp/README.md)
+2. [mcp/tool-surface.md](mcp/tool-surface.md)
+3. [mcp/open-questions.md](mcp/open-questions.md)
+
+### Planning the next milestone?
+1. [PLAN_M4_STOREFRONT.txt](PLAN_M4_STOREFRONT.txt)
+2. [superpowers/plans/](superpowers/plans/)
 
 ---
 

@@ -61,8 +61,8 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 
 **Understanding the project?** Check:
 1. [../README.md](../README.md) - Project overview
-2. [project/PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md) - Code organization
-3. [project/ROADMAP.md](project/ROADMAP.md) - Future plans
+2. [TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt) - Architecture and current state
+3. [PLAN_M4_STOREFRONT.txt](PLAN_M4_STOREFRONT.txt) - Next milestone plan
 
 ---
 
@@ -88,13 +88,9 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| [project/PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md) | Code organization and architecture | Developers |
-| [project/ROADMAP.md](project/ROADMAP.md) | Future features and long-term plans | Everyone |
-| [project/REVAMP_SUMMARY.md](project/REVAMP_SUMMARY.md) | Summary of 2025 improvements | Stakeholders |
-| [project/MODERNIZATION_2025.md](project/MODERNIZATION_2025.md) | Technical quality and standards report | Developers |
-| [project/IMAGE_FIX_SUMMARY.md](project/IMAGE_FIX_SUMMARY.md) | Product image implementation details | Developers |
-| [project/ROBUSTNESS_FIXES.md](project/ROBUSTNESS_FIXES.md) | Client/server component fixes | Developers |
-| [project/REORGANIZATION.md](project/REORGANIZATION.md) | Repository organization history | Maintainers |
+| [TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt) | Full architecture, stack, API contract, deployment, known limits | Everyone |
+| [ITERATIONS.txt](ITERATIONS.txt) | Build history: what worked, what failed, how to rebuild | Everyone |
+| [PLAN_M4_STOREFRONT.txt](PLAN_M4_STOREFRONT.txt) | Next milestone plan (chat UI, approval gating) | Developers |
 
 ### Configuration
 
@@ -108,9 +104,9 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| [setup/QUICK_START_2025.md](setup/QUICK_START_2025.md) | 2025 standards quick reference | Developers |
-| [project/UPGRADE_SUMMARY.md](project/UPGRADE_SUMMARY.md) | Past upgrade history | Maintainers |
-| [project/TEST_RESULTS.md](project/TEST_RESULTS.md) | Test suite results | QA/Developers |
+| [setup/INSTALLATION.md](setup/INSTALLATION.md) | Complete environment setup | Developers |
+| [setup/DOCKER.md](setup/DOCKER.md) | Docker setup guide | DevOps |
+| [superpowers/plans/](superpowers/plans/) | Dated implementation plans for recent milestones | Developers |
 
 ---
 
@@ -123,7 +119,7 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 
 ### "I want to understand the codebase"
 1. 📚 [../README.md](../README.md)
-2. 🗂️ [project/PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md)
+2. 🗂️ [TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt)
 3. 🔍 Browse the code!
 
 ### "I want to contribute"
@@ -138,10 +134,10 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 4. 🤝 [contributing/CONTRIBUTING.md](contributing/CONTRIBUTING.md) - How to work
 5. 💡 [contributing/CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) - Quick reference
 
-### "I'm planning the project roadmap"
-1. 🗺️ [project/ROADMAP.md](project/ROADMAP.md)
-2. 📊 [project/MODERNIZATION_2025.md](project/MODERNIZATION_2025.md)
-3. 📝 [project/REVAMP_SUMMARY.md](project/REVAMP_SUMMARY.md)
+### "I'm planning the next milestone"
+1. 🗺️ [PLAN_M4_STOREFRONT.txt](PLAN_M4_STOREFRONT.txt)
+2. 🤖 [mcp/open-questions.md](mcp/open-questions.md)
+3. 📁 [superpowers/plans/](superpowers/plans/)
 
 ### "I'm troubleshooting an issue"
 1. 💡 [contributing/CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) - Common Issues section
@@ -157,16 +153,17 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 - QUICKSTART.md - 5-minute setup guide
 
 ### `/docs` Directory
+- docs/TECHNICAL_SNAPSHOT.txt - Full architecture overview
+- docs/ITERATIONS.txt - Build history
+- docs/PLAN_M4_STOREFRONT.txt - Next milestone plan
 - docs/setup/DEV_SETUP.md - Complete setup guide
+- docs/setup/INSTALLATION.md - Environment setup
+- docs/setup/DOCKER.md - Docker setup
 - docs/contributing/CONTRIBUTING.md - Contribution guidelines
 - docs/contributing/CHEAT_SHEET.md - Quick reference
 - docs/contributing/HUSKY_SETUP.md - Pre-commit hooks
-- docs/project/ROADMAP.md - Future plans
-- docs/project/REVAMP_SUMMARY.md - 2025 improvements
-- docs/project/PROJECT_STRUCTURE.md - Code organization
-- docs/project/MODERNIZATION_2025.md - Quality report
-- docs/project/UPGRADE_SUMMARY.md - Upgrade history
-- docs/project/TEST_RESULTS.md - Test results
+- docs/mcp/ - MCP server and agent-layer docs
+- docs/superpowers/plans/ - Dated implementation plans
 - docs/DOCS_INDEX.md - This file
 
 ### Configuration Files
@@ -178,13 +175,6 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 - apps/web/docker/Dockerfile - Docker image configuration
 - docker-compose.yml - Docker services (in root)
 
-### `/docs` Directory
-- docs/analysis/ANALYSIS.md - Project analysis
-- docs/analysis/START_HERE.md - Getting started guide
-- docs/analysis/REMAINING_FIXES.md - Known issues
-- docs/analysis/COMPLETION_REPORT.md - Milestone report
-- docs/analysis/PROJECT_HEALTH_REPORT.md - Health metrics
-
 ---
 
 ## 🔍 Finding Specific Information
@@ -192,56 +182,24 @@ in [mcp/](mcp/) — start with [mcp/README.md](mcp/README.md):
 ### Database
 - Setup: [DEV_SETUP.md](setup/DEV_SETUP.md) → Database Setup
 - Commands: [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) → Database Commands
-- Schema: [PROJECT_STRUCTURE.md](project/PROJECT_STRUCTURE.md)
+- Schema & architecture: [TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt)
 - Migrations: [Makefile](../Makefile) → make db-migrate
 
 ### Testing
 - Setup: [DEV_SETUP.md](setup/DEV_SETUP.md) → Testing
 - Commands: [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) → Testing Patterns
-- Results: [TEST_RESULTS.md](project/TEST_RESULTS.md)
 - CI/CD: no CI workflow is configured in this repository
 
 ### Deployment
 - Docker: [docker-compose.yml](../docker-compose.yml)
-- Vercel: [README.md](README.md) → Deployment
 - Environment: [.env.example](../apps/web/.env.example)
-- CI/CD: deploys run from Railway, not a committed workflow
+- Deploys run from Railway, not a committed workflow — see [TECHNICAL_SNAPSHOT.txt](TECHNICAL_SNAPSHOT.txt)
 
 ### Code Quality
 - Standards: [CONTRIBUTING.md](contributing/CONTRIBUTING.md) → Code Standards
 - Linting: [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) → Code Quality
 - Pre-commit: [HUSKY_SETUP.md](contributing/HUSKY_SETUP.md)
 - TypeScript: [tsconfig.json](../apps/web/tsconfig.json)
-
----
-
-## 🆕 What's New (March 2025)
-
-### New Documentation Created
-✨ [QUICKSTART.md](../QUICKSTART.md) - 5-minute setup  
-✨ [DEV_SETUP.md](setup/DEV_SETUP.md) - Complete guide  
-✨ [CONTRIBUTING.md](contributing/CONTRIBUTING.md) - How to contribute  
-✨ [CHEAT_SHEET.md](contributing/CHEAT_SHEET.md) - Quick reference  
-✨ [HUSKY_SETUP.md](contributing/HUSKY_SETUP.md) - Pre-commit hooks  
-✨ [ROADMAP.md](project/ROADMAP.md) - Future plans  
-✨ [REVAMP_SUMMARY.md](project/REVAMP_SUMMARY.md) - Improvements summary  
-✨ [Makefile](../Makefile) - Automation commands  
-✨ [.gitattributes](../.gitattributes) - Git configuration  
-
-### Enhanced Documentation
-📝 [.env.example](../apps/web/.env.example) - Now with detailed comments  
-📝 [.gitignore](../.gitignore) - Updated for venv and test artifacts  
-📝 [README.md](README.md) - Added documentation section  
-
----
-
-## 💡 Tips for Using This Documentation
-
-1. **Bookmark this index** for quick navigation
-2. **Start with QUICKSTART.md** if you're new
-3. **Use CHEAT_SHEET.md** as your daily reference
-4. **Refer to DEV_SETUP.md** when stuck
-5. **Read CONTRIBUTING.md** before your first PR
 
 ---
 
@@ -254,18 +212,3 @@ Found an issue? Want to add something?
 3. Add examples where helpful
 4. Test your instructions
 5. Update this index when adding new docs
-
----
-
-## 📊 Documentation Stats
-
-- **Total Documentation Files**: 11 core + 5 additional
-- **Total Lines**: ~3,000+ lines of helpful content
-- **Languages**: Markdown, Shell, Docker, TypeScript configs
-- **Last Updated**: March 2025
-
----
-
-**Questions about the docs? Open an issue!**
-
-Last updated: March 2025
