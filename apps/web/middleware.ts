@@ -163,10 +163,19 @@ export async function middleware(request: NextRequest) {
     // dropped every query parameter, so an upgraded request arrived with
     // its filters missing and returned a cheerful 200 full of the wrong
     // results.
-    return NextResponse.redirect(
+    // TEMPORARY DIAGNOSTIC -- reverted once the private-network 301 is
+    // understood.
+    const diag = NextResponse.redirect(
       `https://${request.headers.get('host')}${request.nextUrl.pathname}${request.nextUrl.search}`,
       301
     );
+    diag.headers.set('x-diag-forwarded-proto', JSON.stringify(forwardedProto));
+    diag.headers.set('x-diag-host', String(request.headers.get('host')));
+    diag.headers.set(
+      'x-diag-all-headers',
+      JSON.stringify(Object.fromEntries(request.headers.entries()))
+    );
+    return diag;
   }
 
   // Rate limiting for sensitive routes
