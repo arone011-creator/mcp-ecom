@@ -333,10 +333,14 @@ TWO TRAPS ALREADY PAID FOR:
     It now lives in apps/web/docker/, out of auto-detection range, with a test
     guarding its location.
 
-  * Railway's private network breaks the HTTPS upgrade. Internal traffic has no
-    proxy setting x-forwarded-proto, so the middleware redirects it to an
-    address with no TLS. The MCP server therefore talks to the storefront over
-    its public domain.
+  * Railway's private network has no proxy setting x-forwarded-proto, so the
+    HTTPS-upgrade middleware used to redirect internal traffic to an address
+    with no TLS, forcing the MCP server to reach the storefront over its
+    public domain instead. Fixed: the middleware now treats the header's
+    total absence - only possible over the private network, since Railway's
+    public edge always sets it to something - as the signal to skip the
+    upgrade, rather than trusting a spoofable Host value. The MCP server can
+    switch to web.railway.internal once its configured API base URL changes.
 
     IN PLAIN TERMS
     The code lives on GitHub. Pushing to the main branch automatically builds

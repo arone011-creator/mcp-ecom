@@ -55,4 +55,36 @@ describe('production HTTPS upgrade', () => {
 
     expect(res.status).not.toBe(301);
   });
+
+  it('leaves a request with no x-forwarded-proto header alone (Railway private network)', async () => {
+    // Railway's private network is a Wireguard tunnel straight to this
+    // container -- no proxy in front to set the header at all, unlike
+    // public traffic through Railway's edge, which always sets it to
+    // 'http' or 'https'. Absence, not a spoofable Host value, is what
+    // this depends on.
+    const req = new NextRequest('http://web.railway.internal/api/v1/products', {
+      headers: { host: 'web.railway.internal' },
+    });
+
+    const res = await middleware(req);
+
+    expect(res.status).not.toBe(301);
+  });
+
+  it('still redirects a request claiming to be internal but carrying an explicit http proto', async () => {
+    // A spoofed Host header alone must not be enough to skip the upgrade --
+    // only genuine absence of x-forwarded-proto does that. This is the
+    // regression test for the vulnerability a Host-based exception would
+    // have introduced.
+    const req = new NextRequest('http://web.railway.internal/api/v1/products', {
+      headers: { host: 'web.railway.internal', 'x-forwarded-proto': 'http' },
+    });
+
+    const res = await middleware(req);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('location')).toBe(
+      'https://web.railway.internal/api/v1/products'
+    );
+  });
 });

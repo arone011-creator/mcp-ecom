@@ -51,17 +51,17 @@ live, its approval-and-cancel is not.
 → Closes with one sweep run: `python scripts/sweep.py --url ... --api ...
 --email ... --password ...`
 
-**Railway's private network is incompatible with the HTTPS-upgrade
-middleware.**
-`middleware.ts` redirects to https whenever `x-forwarded-proto` is not
-`https`. Over `web.railway.internal` there is no proxy setting that header,
-so every internal call 301s to an address with no TLS. The MCP server
-therefore reaches the storefront over its public domain — correct, but it
-leaves Railway and comes back. Fixing it means skipping the upgrade for
-`.railway.internal` hosts, which is a change to security-relevant
-middleware and was not worth making mid-milestone.
-
 ## Closed by Phase 1
+
+**~~Railway's private network is incompatible with the HTTPS-upgrade
+middleware.~~**
+Fixed: the middleware now treats `x-forwarded-proto`'s total absence, not a
+Host value, as the signal that traffic arrived over the private network —
+Railway's public edge always sets the header to something, so its complete
+absence is not spoofable by a public caller the way a Host header would be.
+`web.railway.internal` calls no longer 301 to an unreachable https address.
+The MCP server's configured API base URL has not yet been switched from the
+public domain to take advantage of it.
 
 **~~Who mints the approval token?~~**
 `POST /approvals` on the MCP server, deliberately **not** an MCP tool, so

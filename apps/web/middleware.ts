@@ -141,15 +141,28 @@ export async function middleware(request: NextRequest) {
   response.headers.set('X-XSS-Protection', '1; mode=block');
 
   // HTTPS redirect in production
+  //
+  // `x-forwarded-proto` is set by Railway's public edge, reflecting how the
+  // client actually connected -- 'http' or 'https', never absent. Railway's
+  // private network (`*.railway.internal`) has no proxy in front at all: a
+  // Wireguard tunnel straight to this container, so the header is never
+  // present there. Absence is therefore a safe, unspoofable signal for
+  // "this arrived over the private network" -- unlike the Host header,
+  // which any caller (public or private) sets freely, an outside client
+  // cannot make x-forwarded-proto vanish on a request that actually went
+  // through Railway's edge. A present-but-wrong value ('http') still means
+  // real public traffic that skipped TLS, and still redirects.
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+
   if (
     process.env.NODE_ENV === 'production' &&
-    request.headers.get('x-forwarded-proto') !== 'https'
+    forwardedProto !== null &&
+    forwardedProto !== 'https'
   ) {
     // `search` included deliberately: rebuilding from the pathname alone
     // dropped every query parameter, so an upgraded request arrived with
     // its filters missing and returned a cheerful 200 full of the wrong
-    // results. Railway terminates TLS and sets x-forwarded-proto, so this
-    // branch does not fire in production -- which is why it went unnoticed.
+    // results.
     return NextResponse.redirect(
       `https://${request.headers.get('host')}${request.nextUrl.pathname}${request.nextUrl.search}`,
       301
