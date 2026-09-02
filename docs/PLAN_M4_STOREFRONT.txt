@@ -208,13 +208,26 @@ TASK 4 - THE CHAT PAGE, READ-ONLY FIRST
     Render the event stream: messages, and tool activity as it happens. No
     approvals yet.
     MUST PROVE: the three low-risk workflows are usable end to end -
-    "what did I order recently", a product search, a stock check.
+    "what did I order recently", a product search, a stock check. And:
+    assistant message text renders as plain text or a tightly restricted
+    Markdown subset - no raw HTML, no auto-linkification of arbitrary
+    domains, links honoured only to this storefront's own domain. Product
+    descriptions already arrive wrapped as untrusted content by the MCP
+    server (mcp-ecom-agent-layer, docs/superpowers/specs/
+    2026-09-02-prompt-injection-design-pass.md); this task is what keeps a
+    rendering bypass from turning that into a clickable phishing link.
 
 TASK 5 - THE APPROVAL CONTROL
     The approval card, plus POST /api/assistant/approve.
     MUST PROVE, and these are the tests that matter most:
       * the card's text is built from structured arguments, and an agent
         message containing markup or instructions cannot alter it;
+      * the card's facts (order number, items, total) come from a fresh
+        server-side lookup of the order by id, not from whatever the
+        approval_required event's payload claims - the event names WHICH
+        order, the lookup answers WHAT is true about it, so a compromised
+        or manipulated event payload cannot misrepresent what is being
+        confirmed;
       * the approve route mints for the EXACT arguments in the event, not
         arguments supplied by the caller;
       * a second click does not mint a second approval;
@@ -293,10 +306,12 @@ TASK 8 - SCORECARD
 6. RISKS CARRIED IN
 ================================================================================
 
-    * PROMPT INJECTION IS STILL UNMITIGATED. Reviews and product
-      descriptions are attacker-controllable and reach the model. Rendering
-      approvals from structured data (Task 5) closes one attack. It is not
-      a design pass, and the design pass is still owed.
+    * PROMPT INJECTION HAS A DESIGN NOW, NOT YET CODE HERE. See
+      mcp-ecom-agent-layer, docs/superpowers/specs/
+      2026-09-02-prompt-injection-design-pass.md. The MCP server now marks
+      untrusted free text at the source; Tasks 4 and 5 above specify this
+      half's part (rendering restrictions, and a fresh server-side lookup
+      backing the approval card) but neither is built yet.
 
     * SESSION TOKENS CANNOT BE REVOKED. Fifteen-minute lifetimes bound the
       exposure. Nothing removes it.
@@ -309,9 +324,10 @@ TASK 8 - SCORECARD
       for one replica only.
 
     IN PLAIN TERMS
-    Four known problems carried into this stage. The serious one is that
-    product reviews are written by the public and read by the AI, and
-    nobody has closed that door yet - this stage narrows it, but does not
-    shut it.
+    Four known problems carried into this stage. The prompt-injection one
+    now has a design behind it - untrusted text is marked at the source in
+    the other repo - but the two pieces this repo owes (safe rendering,
+    and an approval card that checks the real order rather than trusting
+    the event) are still to build.
 
 ================================================================================
