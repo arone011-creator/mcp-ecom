@@ -227,7 +227,45 @@ TASK 1 - FREEZE THE EVENT SCHEMA
     with a parser and a version field.
     MUST PROVE: an unknown event type is ignored rather than crashing the
     UI, and a malformed event does not take down the stream.
-    Coordinate with the agent plan's Task 4 - the two must agree exactly.
+
+    ALREADY FROZEN, 2026-09-02, by the agent plan's Task 4. Do not design
+    it again - implement it. The canonical definition is:
+
+        mcp-ecom-agent-layer/contracts/README.md
+        mcp-ecom-agent-layer/contracts/assistant-events.v1.json
+
+    "The two must agree exactly" is enforced by an artefact rather than by
+    two prose descriptions, because separate repositories in different
+    languages have no module to share. That JSON file holds a recorded
+    stream covering all five types beside the conversation replaying it
+    must produce. The agent repository already executes it in Python.
+
+    THIS TASK: vendor that file into the storefront and assert the
+    TypeScript reducer reaches the identical `expected` conversation.
+    A shape change on either side then reddens tests on that side, which
+    is the point - keep the copy byte-identical rather than tidying it.
+
+    TWO THINGS THE AGENT WILL NEVER SEND, contrary to section 3 above:
+
+      * approval_required carries NO token handle, only call_id. Section
+        3's summary line says "a token handle", but Task 5 below has the
+        approve route mint AFTER a human click, from the arguments in the
+        event. A handle minted by the agent would be the agent taking
+        part in its own approval. call_id is enough: the event names
+        WHICH order, and Task 5's fresh server-side lookup answers WHAT
+        is true about it.
+
+      * tool_completed carries NO cache-invalidation hint. Rule 3 still
+        holds, but the tool -> cache-key mapping is written HERE. The
+        event carries `tool` and `ok`; this side maps. An agent shipping
+        cache keys would be asserting facts about a UI it cannot see.
+
+    Also settled there and worth knowing before building the widget:
+    every tool_started is guaranteed a tool_completed, including a call
+    the agent refused to run, so a chip never spins forever; and a
+    missing `seq` is reported as a gap rather than smoothed over,
+    because a dropped event means the screen is not showing what
+    happened.
 
 TASK 2 - SHORT-LIVED TOKENS FROM A SESSION, WITHOUT A PASSWORD
     POST /api/v1/auth/refresh: read the session cookie, mint a 15-minute
