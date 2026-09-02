@@ -55,7 +55,7 @@ CONTENTS
 1. DECISIONS THAT MUST BE MADE FIRST
 ================================================================================
 
-Three. Each changes the task breakdown, so settle them before Task 1.
+Four. Each changes the task breakdown, so settle them before Task 1.
 
 (A) WHERE DOES THE AGENT LOOP RUN?
 
@@ -103,11 +103,25 @@ Three. Each changes the task breakdown, so settle them before Task 1.
     exists in the browser, and "refresh" becomes "mint another one",
     which needs no new storage.
 
+(D) WHERE DOES THE CONVERSATION LIVE, AND HOW DOES IT SURVIVE NAVIGATION?
+
+    The assistant is available from every page, not one dedicated route -
+    a floating entry point, not a destination. That means the conversation
+    and its streaming connection cannot be owned by a page component; a
+    route change would tear both down.
+
+    RECOMMENDED: a single provider mounted once in app/layout.tsx, holding
+    the message history and the open connection to /api/assistant. Every
+    page renders the same floating widget reading from that provider.
+    Closing the widget hides it; it does not unmount the conversation.
+
     IN PLAIN TERMS
-    Three things to decide before building. The most important: the AI
+    Four things to decide before building. The most important: the AI
     must not be able to approve its own actions. A human clicks the
     button, and the shop - not the AI - issues the permission slip. If the
     AI could issue its own, the whole safety design would be decoration.
+    The fourth: the chat needs to live "above" any one page, the way the
+    header does, so clicking around the site does not reset it.
 
 
 ================================================================================
@@ -123,7 +137,17 @@ Three. Each changes the task breakdown, so settle them before Task 1.
                                          tokens, streams events back.
     app/api/assistant/approve/route.ts   Mints an approval AFTER a human
                                          click. Server-side only.
-    app/(store)/assistant/page.tsx       The chat page.
+    components/assistant/AssistantProvider.tsx
+                                         Root-level state: the conversation
+                                         and the streaming connection,
+                                         mounted once in app/layout.tsx so
+                                         both survive client-side
+                                         navigation.
+    components/assistant/AssistantWidget.tsx
+                                         The floating entry point and
+                                         docked panel - collapsed by
+                                         default on every page, not a
+                                         route of its own.
     components/assistant/*.tsx           Message list, tool-activity chips,
                                          approval card, product/order cards.
     lib/assistant/events.ts              The event schema and its parser -
@@ -138,8 +162,9 @@ Three. Each changes the task breakdown, so settle them before Task 1.
                                          rate, turn latency, tokens.
 
     IN PLAIN TERMS
-    A chat page, the plumbing behind it, a way to hand the AI a
-    short-lived pass, and an approval button that only a person can press.
+    A chat window available from every page, the plumbing behind it, a
+    way to hand the AI a short-lived pass, and an approval button that
+    only a person can press.
 
 
 ================================================================================
