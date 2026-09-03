@@ -85,6 +85,20 @@ export function AssistantWidget() {
           </div>
         ))}
 
+        {/*
+          A turn that FAILED, as distinct from a tool that failed. The
+          agent reports these; before it did, a turn that died after the
+          response had begun ended the stream cleanly with nothing in it,
+          and the panel showed the question and then blank -- which reads
+          as an assistant that had nothing to say. Rendered as plain text
+          like everything else here, never as markup.
+        */}
+        {conversation.errors.map((failure, index) => (
+          <p key={index} role="alert" className="text-rose-700">
+            {String(failure.message ?? 'The assistant could not finish that.')}
+          </p>
+        ))}
+
         {status === 'error' ? (
           <p role="alert" className="text-rose-700">
             Something went wrong reaching the assistant. Try again.

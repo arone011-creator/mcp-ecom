@@ -82,6 +82,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       const parser = new SseParser();
+      let received = 0;
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -100,11 +101,21 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           }
 
           const event = parseEvent(raw);
-          if (event) setEvents((previous) => [...previous, event]);
+          if (event) {
+            received += 1;
+            setEvents((previous) => [...previous, event]);
+          }
         }
       }
 
-      setStatus('idle');
+      // A STREAM THAT ENDED WITH NOTHING IN IT IS A FAILURE, not an
+      // answer. The connection opening successfully proves only that the
+      // bridge route replied; a turn that died behind it closes just as
+      // cleanly as one that finished. Reporting idle here leaves the
+      // customer looking at their own question and no reply, with nothing
+      // to act on -- which is exactly what a broken agent deploy looked
+      // like from the outside.
+      setStatus(received === 0 ? 'error' : 'idle');
     } catch {
       setStatus('error');
     } finally {

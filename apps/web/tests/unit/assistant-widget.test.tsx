@@ -333,6 +333,45 @@ describe('AssistantWidget', () => {
     expect(screen.getByText('where is my order?')).toBeInTheDocument();
   });
 
+  it('shows a turn that failed midway rather than falling silent', async () => {
+    // WHAT A BROKEN DEPLOY LOOKED LIKE. The agent raised after the
+    // response had already begun, so the stream ended cleanly with
+    // nothing in it, and the panel showed the question and then blank --
+    // indistinguishable from an assistant with nothing to say. The
+    // contract's `error` event exists for this; the panel now renders it.
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        event(-1, 'error', {
+          message: 'The assistant ran into a problem and could not finish that.',
+          retryable: true,
+        })
+      )
+    );
+
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByText(/could not finish that/)).toBeInTheDocument()
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('does not leave a completed turn looking like it is still working', async () => {
+    // The other half of the blank panel: a stream that ends with no
+    // message and no error at all. Saying nothing is a state the
+    // customer cannot act on.
+    global.fetch = jest.fn().mockResolvedValue(streamOf(''));
+
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.queryByText(/Working/)).toBeNull();
+  });
+
   it('reports a failure with a way forward rather than a stalled spinner', async () => {
     global.fetch = jest.fn().mockResolvedValue(streamOf('', 502));
 
