@@ -18,9 +18,10 @@
 // It also never reads a request body. Not "rejects a password" -- never
 // parses one. That is why there is nothing here to bypass.
 import type { NextRequest } from 'next/server';
-import { encode, getToken } from 'next-auth/jwt';
+import { getToken } from 'next-auth/jwt';
 
 import { ok, fail } from '../../_lib/respond';
+import { mintBearer } from '../../_lib/mint';
 import { isRateLimited, recordAttempt } from '../../_lib/rate-limit';
 
 export const runtime = 'nodejs';
@@ -60,15 +61,11 @@ export async function POST(req: NextRequest) {
   }
   recordAttempt(key, MINT_WINDOW_MS);
 
-  const token = await encode({
-    token: {
-      sub: session.sub,
-      email: session.email,
-      role: session.role,
-    },
+  const token = await mintBearer(
+    { sub: session.sub, email: session.email, role: session.role },
     secret,
-    maxAge: REFRESH_TTL_SECONDS,
-  });
+    REFRESH_TTL_SECONDS
+  );
 
   // No `user` in the response: the browser calling this already knows who
   // it is, and a route that hands back identity invites a client to trust

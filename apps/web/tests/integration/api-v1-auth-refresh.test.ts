@@ -189,6 +189,29 @@ describe('the minted token', () => {
   });
 });
 
+describe('the shared mint helper', () => {
+  it('produces a token /whoami accepts', async () => {
+    // Factored out so the refresh route and the assistant bridge cannot
+    // drift about what goes into a token.
+    const { mintBearer } = await import('@/app/api/v1/_lib/mint');
+
+    const token = await mintBearer(
+      { sub: 'user_9', email: 'a@b.com', role: 'USER' },
+      process.env.NEXTAUTH_SECRET as string,
+      REFRESH_TTL_SECONDS
+    );
+
+    const identified = await whoami(
+      new NextRequest('https://example.com/api/v1/auth/whoami', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    );
+
+    expect(identified.status).toBe(200);
+    expect((await identified.json()).data.id).toBe('user_9');
+  });
+});
+
 describe('rate limiting', () => {
   it('stops a runaway client minting without bound', async () => {
     mockGetToken.mockResolvedValue(SIGNED_IN);
