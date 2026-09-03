@@ -294,12 +294,53 @@ TASK 1 - FREEZE THE EVENT SCHEMA    [DONE 2026-09-03]
     fractional seq, an array, and a missing data object. 258 unit tests
     pass; type-check clean.
 
-TASK 2 - SHORT-LIVED TOKENS FROM A SESSION, WITHOUT A PASSWORD
+TASK 2 - SHORT-LIVED TOKENS FROM A SESSION, WITHOUT A PASSWORD    [DONE 2026-09-03]
     POST /api/v1/auth/refresh: read the session cookie, mint a 15-minute
     bearer. Reuse the ttlSeconds clamp added in M3.
     MUST PROVE: 401 without a session; the minted token is accepted by
     /api/v1/auth/whoami; the lifetime is 15 minutes, not 7 days; and the
     route never accepts a password.
+
+    ALL FOUR PROVED. AND A FIFTH, WHICH THIS PLAN DID NOT ASK FOR AND
+    WHICH DECIDES WHETHER THE OTHER FOUR MATTER:
+
+        THE ROUTE MUST REFUSE A BEARER TOKEN.
+
+    The obvious implementation calls requireApiUser, because every other
+    v1 route does and its own header calls it "the single identity choke
+    point". But requireApiUser accepts a bearer OR a cookie -- and a
+    bearer is exactly what this route issues. Wired that way, the agent's
+    own 15-minute token can call /refresh and receive another 15 minutes,
+    indefinitely. The token stops expiring, and every reason the lifetime
+    is short evaporates: these JWTs cannot be revoked, and rotating
+    NEXTAUTH_SECRET is the only kill switch and signs out every browser.
+
+    So this route calls getToken directly. Cookie only. A browser may
+    refresh; a token may not. That reasoning is in the route's own header
+    as well as here, because a future reader tidying it to match the
+    other routes would silently create an un-expiring token.
+
+    Mutation-checked rather than assumed: swapping getToken for
+    requireApiUser makes the test fail, which is the point of having it.
+
+    TWO SMALLER DECISIONS
+      * The route NEVER READS A REQUEST BODY. Not "rejects a password" --
+        never parses one, so there is nothing to bypass and nothing to
+        regress. A body carrying email and password changes nothing.
+      * The lifetime is not caller-controllable. clampTtl exists so a
+        caller can ask for LESS than a long default; here there is no
+        default worth shortening. A test asserts REFRESH_TTL_SECONDS sits
+        inside the token route's own bounds, so the two cannot drift into
+        disagreeing about a sane lifetime.
+
+    The response omits `user`. The browser calling this already knows who
+    it is, and a route that hands back identity invites a client to trust
+    it instead of /whoami.
+
+    A per-user rate limit bounds a runaway client: 20 mints per 5
+    minutes, which a widget refreshing a 15-minute token never
+    approaches. In-process, so per replica -- the same limitation the
+    token route's limiter already documents.
 
 TASK 3 - THE BRIDGE ROUTE
     POST /api/assistant: takes a user utterance, mints a token, calls the
