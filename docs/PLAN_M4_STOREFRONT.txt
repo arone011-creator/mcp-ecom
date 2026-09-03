@@ -361,6 +361,46 @@ TASK 8 - SCORECARD
     with or without a previous entry. That mistake was already made once
     in M3 and caught by a test.
 
+    THE FILE SHAPE IS SETTLED, 2026-09-03, by the agent plan's Task 7.
+    Do not design it again. metrics/agent-evals.json:
+
+        {
+          "generatedAt": "2026-09-03T09:14:02Z",
+          "model": "gpt-4.1",
+          "runs": 5,
+          "workflows": {
+            "orders-recent": {
+              "passRate": 1.0,
+              "toolAccuracy": 1.0,
+              "unexpectedToolCalls": 0,
+              "p50": 10703,
+              "p95": 12880,
+              "promptTokens": 2637,
+              "completionTokens": 155
+            }
+          }
+        }
+
+    loadAgent() is a copy of loadMcp(): read from disk, return null when
+    the file is absent, so this harness still never needs a Python
+    environment. It reads `.workflows`; the envelope exists because a
+    pass rate means nothing without knowing which model produced it and
+    over how many runs, and both belong next to the number in the report.
+
+    GATE ABSOLUTELY on passRate < 1, the same call the mcp section
+    already makes for successRate < 1: a workflow that works four times
+    in five is broken, not slow.
+
+    unexpectedToolCalls is worth surfacing even though it does not gate.
+    It counts tools the agent called that its fixture neither required
+    nor allowed - the signal that an injected instruction moved the agent
+    even where the guarded tools themselves were never reached.
+
+    p50/p95 are WHOLE-TURN wall clock, several model round trips and
+    several MCP calls, so they are seconds rather than the milliseconds
+    in the mcp section. Do not gate them against the mcp numbers; they
+    measure different things.
+
     IN PLAIN TERMS
     Eight steps, each finishing with a review. The order is deliberate:
     agree the message format, then the security plumbing, then a chat
