@@ -6,6 +6,8 @@ import { Providers } from '@/components/providers';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 import { CartProvider } from '@/components/cart-provider';
+import { AssistantProvider } from '@/components/assistant/assistant-provider';
+import { AssistantWidget } from '@/components/assistant/assistant-widget';
 import { Toaster } from '@/components/ui/toaster';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -61,12 +63,28 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           <CartProvider>
-            <div className="flex min-h-screen flex-col">
-              <Header />
-              <main className="flex-1">{children}</main>
-              <Footer />
-            </div>
-            <Toaster />
+            {/*
+              The assistant is mounted HERE, above the page, and that
+              placement is the feature: a client-side navigation
+              re-renders children and leaves the conversation and its
+              open connection untouched. Mounted inside a page it would
+              reset every time a customer clicked a product.
+
+              Inside CartProvider on purpose -- a cart change made
+              through the chat must invalidate the same data the header
+              badge reads, never a private copy (storefront plan,
+              section 3, rule 3). Nothing needs that until Task 6; the
+              nesting is what lets it happen without moving anything.
+            */}
+            <AssistantProvider>
+              <div className="flex min-h-screen flex-col">
+                <Header />
+                <main className="flex-1">{children}</main>
+                <Footer />
+              </div>
+              <AssistantWidget />
+              <Toaster />
+            </AssistantProvider>
           </CartProvider>
         </Providers>
       </body>
