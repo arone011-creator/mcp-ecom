@@ -55,43 +55,47 @@ function state(activity: Activity): { text: string; className: string } {
   };
 }
 
+/**
+ * One tool, as the customer sees it.
+ *
+ * Rendered per timeline item rather than as one block at the end of the
+ * conversation, so a call sits beside the question that caused it.
+ */
+export function ToolActivityChip({ activity }: { activity: Activity }) {
+  // A call waiting on a human is not a status chip; it is a decision. The
+  // card renders from a fresh server-side lookup of what the action
+  // affects -- never from these arguments, and never from agent prose.
+  if (activity.awaiting_approval) {
+    return <ApprovalCard callId={activity.call_id} tool={activity.tool} />;
+  }
+
+  const shown = state(activity);
+
+  return (
+    <div className={`rounded border px-2 py-1 text-xs ${shown.className}`}>
+      <span className="font-medium">{label(activity.tool)}</span>
+      <span> - {shown.text}</span>
+      {activity.ok === false && activity.error ? (
+        // The storefront's own message, passed through every layer
+        // verbatim: it carries the number that IS available.
+        <span className="mt-0.5 block break-words opacity-80">
+          {activity.error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function ToolActivityList({ tools }: { tools: Activity[] }) {
   if (tools.length === 0) return null;
 
   return (
     <ul className="flex flex-col gap-1" aria-label="Assistant activity">
-      {tools.map((activity) => {
-        // A call waiting on a human is not a status chip; it is a
-        // decision. The card renders from a fresh server-side lookup of
-        // what the action affects -- never from these arguments, and
-        // never from anything the model wrote.
-        if (activity.awaiting_approval) {
-          return (
-            <li key={activity.call_id}>
-              <ApprovalCard callId={activity.call_id} tool={activity.tool} />
-            </li>
-          );
-        }
-
-        const shown = state(activity);
-
-        return (
-          <li
-            key={activity.call_id}
-            className={`rounded border px-2 py-1 text-xs ${shown.className}`}
-          >
-            <span className="font-medium">{label(activity.tool)}</span>
-            <span> - {shown.text}</span>
-            {activity.ok === false && activity.error ? (
-              // The storefront's own message, passed through every layer
-              // verbatim: it carries the number that IS available.
-              <span className="mt-0.5 block break-words opacity-80">
-                {activity.error}
-              </span>
-            ) : null}
-          </li>
-        );
-      })}
+      {tools.map((activity) => (
+        <li key={activity.call_id}>
+          <ToolActivityChip activity={activity} />
+        </li>
+      ))}
     </ul>
   );
 }

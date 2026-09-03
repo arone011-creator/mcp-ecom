@@ -359,6 +359,77 @@ describe('AssistantWidget', () => {
     expect(container.textContent).not.toContain('evil.example.com');
   });
 
+
+  it('reads as a conversation: question, answer, question, answer', async () => {
+    // THE BUG THIS TEST EXISTS FOR. The panel rendered every utterance,
+    // then every tool chip, then every assistant message -- grouped by
+    // kind rather than by when. One exchange looked perfect, which is why
+    // no screenshot caught it; two exchanges came out as Q1 Q2 A1 A2.
+    //
+    // Asserted on DOM ORDER, because that is the whole feature. Asserting
+    // that all four strings are present would pass on the broken version.
+    const answer = (text: string) =>
+      `event: assistant
+data: ${JSON.stringify({
+        v: 1,
+        seq: 0,
+        type: 'message',
+        data: { text },
+      })}
+
+`;
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(streamOf(answer('Your last order was ORD-1.')))
+      .mockResolvedValueOnce(streamOf(answer('It ships on Friday.')));
+
+    const { container } = renderWidget();
+    await open();
+
+    await ask('what did I order?');
+    await waitFor(() => expect(screen.getByText(/ORD-1\./)).toBeInTheDocument());
+
+    await ask('when does it ship?');
+    await waitFor(() =>
+      expect(screen.getByText(/ships on Friday/)).toBeInTheDocument()
+    );
+
+    const shown = [...container.querySelectorAll('p')]
+      .map((node) => node.textContent ?? '')
+      .filter((line) =>
+        /what did I order|ORD-1\.|when does it ship|ships on Friday/.test(line)
+      );
+
+    expect(shown).toEqual([
+      'what did I order?',
+      'Your last order was ORD-1.',
+      'when does it ship?',
+      'It ships on Friday.',
+    ]);
+  });
+
+  it('puts the customer on the right and the assistant on the left', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        streamOf(event(0, 'message', { text: 'You ordered ORD-1.' }))
+      );
+
+    renderWidget();
+    await open();
+    await ask('what did I order?');
+    await waitFor(() =>
+      expect(screen.getByText(/You ordered ORD-1\./)).toBeInTheDocument()
+    );
+
+    // self-end is what pushes a bubble to the right in a flex column.
+    expect(screen.getByText('what did I order?').className).toContain('self-end');
+    expect(
+      screen.getByText(/You ordered ORD-1\./).closest('div')!.className
+    ).toContain('self-start');
+  });
+
   it('shows the customer their own question', async () => {
     renderWidget();
     await open();

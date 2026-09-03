@@ -14,12 +14,12 @@ import { useState } from 'react';
 
 import { AssistantText } from './assistant-text';
 import { useAssistant } from './assistant-provider';
-import { ToolActivityList } from './tool-activity';
+import { ToolActivityChip } from './tool-activity';
 
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
-  const { conversation, turns, status, send } = useAssistant();
+  const { transcript, status, send } = useAssistant();
 
   const busy = status === 'streaming';
 
@@ -63,40 +63,62 @@ export function AssistantWidget() {
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3 text-sm">
-        {turns.length === 0 ? (
+        {transcript.length === 0 ? (
           <p className="text-slate-500">
             Ask about your orders, or find something in the shop.
           </p>
         ) : null}
 
-        {turns.map((turn, index) => (
-          <div key={index} className="flex flex-col gap-2">
-            <p className="self-end rounded-lg bg-slate-900 px-3 py-2 text-white">
-              {turn.utterance}
-            </p>
-          </div>
-        ))}
-
-        <ToolActivityList tools={conversation.tools} />
-
-        {conversation.text.map((text, index) => (
-          <div key={index} className="rounded-lg bg-slate-100 px-3 py-2">
-            <AssistantText text={text} />
-          </div>
-        ))}
-
         {/*
-          A turn that FAILED, as distinct from a tool that failed. The
-          agent reports these; before it did, a turn that died after the
-          response had begun ended the stream cleanly with nothing in it,
-          and the panel showed the question and then blank -- which reads
-          as an assistant that had nothing to say. Rendered as plain text
-          like everything else here, never as markup.
+          ONE BLOCK PER TURN, in order: the customer's message, then what
+          the assistant did about it. The panel used to render every
+          utterance, then every tool chip, then every message -- grouped by
+          kind rather than by when, which reads correctly for exactly one
+          exchange and wrongly for two.
         */}
-        {conversation.errors.map((failure, index) => (
-          <p key={index} role="alert" className="text-rose-700">
-            {String(failure.message ?? 'The assistant could not finish that.')}
-          </p>
+        {transcript.map((entry, turnIndex) => (
+          <div key={turnIndex} className="flex flex-col gap-2">
+            <p className="max-w-[85%] self-end rounded-2xl bg-slate-900 px-3 py-2 text-white">
+              {entry.utterance}
+            </p>
+
+            {entry.conversation.timeline.map((item, itemIndex) => {
+              if (item.kind === 'text') {
+                return (
+                  <div
+                    key={itemIndex}
+                    className="max-w-[85%] self-start rounded-2xl bg-slate-100 px-3 py-2"
+                  >
+                    <AssistantText text={item.text} />
+                  </div>
+                );
+              }
+
+              if (item.kind === 'tool') {
+                const activity = entry.conversation.tools.find(
+                  (candidate) => candidate.call_id === item.call_id
+                );
+                // The timeline names a tool; `tools` says what became of
+                // it. A timeline entry with no matching activity would
+                // mean the reducer disagreed with itself.
+                return activity ? (
+                  <div key={itemIndex} className="max-w-[85%] self-start">
+                    <ToolActivityChip activity={activity} />
+                  </div>
+                ) : null;
+              }
+
+              return (
+                <p
+                  key={itemIndex}
+                  role="alert"
+                  className="max-w-[85%] self-start text-rose-700"
+                >
+                  {String(item.message ?? 'The assistant could not finish that.')}
+                </p>
+              );
+            })}
+          </div>
         ))}
 
         {status === 'error' ? (
