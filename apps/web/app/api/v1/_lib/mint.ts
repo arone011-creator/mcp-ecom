@@ -24,8 +24,16 @@ export async function mintBearer(
   secret: string,
   ttlSeconds: number
 ): Promise<string> {
+  // Narrowed rather than cast, the same way _lib/session.ts reads these
+  // claims back out. A JWT is whatever was signed into it, so treating
+  // its fields as known strings is an assumption, not a fact -- and a
+  // claim of the wrong type is better dropped than minted.
   return encode({
-    token: { sub: session.sub, email: session.email, role: session.role },
+    token: {
+      sub: session.sub,
+      email: typeof session.email === 'string' ? session.email : undefined,
+      role: typeof session.role === 'string' ? session.role : undefined,
+    },
     secret,
     maxAge: ttlSeconds,
   });
