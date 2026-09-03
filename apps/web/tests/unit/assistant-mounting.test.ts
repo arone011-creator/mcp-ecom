@@ -43,13 +43,37 @@ describe('the assistant is mounted above the page', () => {
     expect(hits).toEqual(['app/layout.tsx']);
   });
 
-  it('sits inside CartProvider, so a chat-driven cart change can reach it', () => {
+  it('sits inside the cart context, so a chat-driven cart change can reach it', () => {
     // Rule 3 of the storefront plan: a cart change made through the chat
     // must invalidate the same data the header badge reads, never a
-    // private copy. Nothing needs it until Task 6; the nesting is what
-    // makes that possible without moving anything.
-    expect(layout.indexOf('<CartProvider')).toBeLessThan(
+    // private copy. <Providers> supplies CartProvider, so being inside
+    // Providers IS being inside the cart context.
+    expect(layout.indexOf('<Providers')).toBeLessThan(
       layout.indexOf('<AssistantProvider')
     );
+  });
+
+  it('mounts CartProvider exactly once, in Providers and nowhere else', () => {
+    // THE BUG THIS TEST EXISTS FOR. Task 4 wrapped a second CartProvider
+    // around the assistant to get it inside the cart context, not
+    // noticing <Providers> already had one. Two instances each held their
+    // own items state and each synced the same localStorage 'cart' key,
+    // so they could overwrite one another -- and the outer had no
+    // consumers, because everything below sat inside the inner one. That
+    // is precisely the private-copy failure rule 3 forbids, introduced by
+    // the change whose comment claimed to be honouring it.
+    //
+    // The provider-count assertion above it caught this class of mistake
+    // for AssistantProvider. It was never applied to the provider being
+    // nested INTO, which is the one that was duplicated.
+    const hits = execSync('git grep -l "<CartProvider" -- app components', {
+      encoding: 'utf-8',
+      cwd: process.cwd(),
+    })
+      .split('\n')
+      .filter(Boolean)
+      .sort();
+
+    expect(hits).toEqual(['components/providers.tsx']);
   });
 });

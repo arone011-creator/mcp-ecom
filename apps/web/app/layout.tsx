@@ -5,7 +5,6 @@ import '@/styles/globals.css';
 import { Providers } from '@/components/providers';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
-import { CartProvider } from '@/components/cart-provider';
 import { AssistantProvider } from '@/components/assistant/assistant-provider';
 import { AssistantWidget } from '@/components/assistant/assistant-widget';
 import { Toaster } from '@/components/ui/toaster';
@@ -61,31 +60,36 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <Providers>
-          <CartProvider>
-            {/*
-              The assistant is mounted HERE, above the page, and that
-              placement is the feature: a client-side navigation
-              re-renders children and leaves the conversation and its
-              open connection untouched. Mounted inside a page it would
-              reset every time a customer clicked a product.
+        {/*
+          The assistant is mounted HERE, above the page, and that
+          placement is the feature: a client-side navigation re-renders
+          children and leaves the conversation and its open connection
+          untouched. Mounted inside a page it would reset every time a
+          customer clicked a product.
 
-              Inside CartProvider on purpose -- a cart change made
-              through the chat must invalidate the same data the header
-              badge reads, never a private copy (storefront plan,
-              section 3, rule 3). Nothing needs that until Task 6; the
-              nesting is what lets it happen without moving anything.
-            */}
-            <AssistantProvider>
-              <div className="flex min-h-screen flex-col">
-                <Header />
-                <main className="flex-1">{children}</main>
-                <Footer />
-              </div>
-              <AssistantWidget />
-              <Toaster />
-            </AssistantProvider>
-          </CartProvider>
+          It sits inside <Providers>, which ALREADY supplies CartProvider
+          -- so a cart change made through the chat reaches the same
+          context the header badge reads, never a private copy (storefront
+          plan, section 3, rule 3).
+
+          Task 4 wrapped a SECOND CartProvider around this to get that
+          nesting, not noticing Providers had one. Two instances each held
+          their own items state and each synced the same localStorage
+          'cart' key, so they could overwrite one another -- and the outer
+          one had no consumers at all, since everything below lived inside
+          the inner. Exactly the private-copy failure the comment claimed
+          to prevent.
+        */}
+        <Providers>
+          <AssistantProvider>
+            <div className="flex min-h-screen flex-col">
+              <Header />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </div>
+            <AssistantWidget />
+            <Toaster />
+          </AssistantProvider>
         </Providers>
       </body>
     </html>
