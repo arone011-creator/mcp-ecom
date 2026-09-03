@@ -47,12 +47,28 @@ export type DecisionState = 'sending' | 'approved' | 'declined' | 'failed';
 
 export interface Turn {
   utterance: string;
+  /**
+   * The events this turn produced.
+   *
+   * GROUPED, not flat. A single array for the whole conversation cannot
+   * say which reply answered which question, so a two-turn transcript
+   * cannot be ordered however well the reducer sorts one turn. This is
+   * also the shape a persisted ConversationTurn takes.
+   */
+  events: AssistantEvent[];
+}
+
+export interface TranscriptEntry {
+  utterance: string;
+  conversation: Conversation;
 }
 
 interface AssistantContextValue {
   events: AssistantEvent[];
   conversation: Conversation;
   turns: Turn[];
+  /** What the panel renders: one entry per turn, in order. */
+  transcript: TranscriptEntry[];
   status: AssistantStatus;
   send: (utterance: string) => Promise<void>;
   approve: (callId: string, approved: boolean) => Promise<void>;
@@ -64,7 +80,6 @@ const AssistantContext = createContext<AssistantContextValue | undefined>(
 );
 
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
-  const [events, setEvents] = useState<AssistantEvent[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [status, setStatus] = useState<AssistantStatus>('idle');
   const [answered, setAnswered] = useState<Record<string, DecisionState>>({});
@@ -79,7 +94,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
     inFlight.current = true;
     setStatus('streaming');
-    setTurns((previous) => [...previous, { utterance: asked }]);
+    setTurns((previous) => [...previous, { utterance: asked, events: [] }]);
 
     try {
       const response = await fetch('/api/assistant', {
@@ -117,7 +132,20 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           const event = parseEvent(raw);
           if (event) {
             received += 1;
-            setEvents((previous) => [...previous, event]);
+            setTurns((previous) => {
+              // The turn was appended before the request went out, so
+              // there is always one to file under. Narrowed rather than
+              // asserted: an event arriving with no open turn would mean
+              // the stream outlived its own send(), and silently dropping
+              // it is better than a crash mid-conversation.
+              const current = previous[previous.length - 1];
+              if (!current) return previous;
+
+              return [
+                ...previous.slice(0, -1),
+                { ...current, events: [...current.events, event] },
+              ];
+            });
           }
         }
       }
@@ -176,12 +204,35 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // The single source of truth for what is on screen.
+  // Derived, so `turns` stays the single source of truth. `events` is kept
+  // flat for callers that want the raw stream and for the gap report.
+  const events = useMemo(() => turns.flatMap((turn) => turn.events), [turns]);
+
+  // What the panel renders. replay() remains the ONLY reducer -- run once
+  // per turn now rather than once per conversation.
+  const transcript = useMemo(
+    () =>
+      turns.map((turn) => ({
+        utterance: turn.utterance,
+        conversation: replay(turn.events),
+      })),
+    [turns]
+  );
+
   const conversation = useMemo(() => replay(events), [events]);
 
   const value = useMemo(
-    () => ({ events, conversation, turns, status, send, approve, answered }),
-    [events, conversation, turns, status, send, approve, answered]
+    () => ({
+      events,
+      conversation,
+      transcript,
+      turns,
+      status,
+      send,
+      approve,
+      answered,
+    }),
+    [events, conversation, transcript, turns, status, send, approve, answered]
   );
 
   return (

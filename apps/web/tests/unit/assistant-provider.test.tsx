@@ -197,3 +197,72 @@ describe('AssistantProvider', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('turns own their events', () => {
+  function TranscriptProbe() {
+    const { transcript, send, status } = useAssistant();
+
+    return (
+      <div>
+        <button onClick={() => send('first question')}>ask-one</button>
+        <button onClick={() => send('second question')}>ask-two</button>
+        <span data-testid="status">{status}</span>
+        <span data-testid="shape">
+          {transcript
+            .map(
+              (entry) =>
+                `${entry.utterance}=>${entry.conversation.timeline
+                  .map((item) =>
+                    item.kind === 'text' ? item.text : `[${item.kind}]`
+                  )
+                  .join(',')}`
+            )
+            .join(' | ')}
+        </span>
+      </div>
+    );
+  }
+
+  function renderTranscript() {
+    return render(
+      <AssistantProvider>
+        <TranscriptProbe />
+      </AssistantProvider>
+    );
+  }
+
+  it('files each reply under the question that caused it', async () => {
+    // THE BUG. With one flat event array nothing says which answer belongs
+    // to which question, so a two-turn conversation cannot be rendered in
+    // order however carefully the reducer sorts a single turn.
+    const first =
+      'event: assistant\ndata: {"v":1,"seq":0,"type":"message","data":{"text":"answer one"}}\n\n';
+    const second =
+      'event: assistant\ndata: {"v":1,"seq":0,"type":"message","data":{"text":"answer two"}}\n\n';
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(streamOf(first))
+      .mockResolvedValueOnce(streamOf(second));
+
+    renderTranscript();
+
+    await act(async () => {
+      screen.getByText('ask-one').click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+
+    await act(async () => {
+      screen.getByText('ask-two').click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+
+    expect(screen.getByTestId('shape')).toHaveTextContent(
+      'first question=>answer one | second question=>answer two'
+    );
+  });
+});
