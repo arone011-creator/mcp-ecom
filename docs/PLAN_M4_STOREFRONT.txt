@@ -533,3 +533,46 @@ TASK 8 - SCORECARD
     the event) are still to build.
 
 ================================================================================
+
+================================================================================
+CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
+================================================================================
+    Not a numbered task in this plan. It came out of the persistence
+    brainstorm (docs/superpowers/plans/2026-09-03-chat-persistence-roadmap.md)
+    when the GPT-style layout requirement exposed a bug that was already
+    shipped.
+
+    THE BUG. The panel rendered every utterance, then every tool chip, then
+    every assistant message - grouped by kind rather than by when. One
+    exchange looks perfect, which is why no screenshot caught it. Two came
+    out as Q1 Q2 A1 A2.
+
+    The cause was in the contract, not the component: replay() returned
+    three parallel lists (text, tools, errors) and so discarded the order
+    events arrived in.
+
+    WHAT CHANGED
+      * replay() gained an ordered `timeline`, added the same additive way
+        message_delta was: mirrored in agent/events.py and
+        lib/assistant/events.ts, golden fixture re-vendored byte for byte.
+        A tool is NAMED on the timeline, not embedded, because its state
+        changes after it first appears and a snapshot would read "working"
+        forever. One call is one item however many events it emits. A
+        finished message replaces its fragments IN PLACE, so an answer
+        keeps its position relative to tool calls that followed it.
+      * The provider now groups events BY TURN rather than holding one flat
+        array. Nothing else could say which reply answered which question.
+        replay() runs once per turn and remains the only reducer.
+      * The panel renders one block per turn: customer right, assistant
+        left, in order.
+
+    Mutation-tested on both sides: 4 mutations each, all caught, and the
+    shared golden fixture catches most of them independently of the local
+    tests - which is the entire reason that fixture exists.
+
+    THIS GROUPING IS THE SHAPE PHASE 2 PERSISTS as ConversationTurn
+    (utterance + events). It is not scaffolding.
+
+    Phases 2-6 (storage and resume, history UI, titles, memory with a hard
+    budget, summarisation) each get their own plan. The roadmap records the
+    decisions so none of them is argued twice.
