@@ -25,11 +25,21 @@ export const SCHEMA_VERSION = 1;
 
 export const EVENT_TYPES = [
   'message',
+  'message_delta',
   'tool_started',
   'tool_completed',
   'approval_required',
   'error',
 ] as const;
+
+/**
+ * The sequence number of an event that is NOT part of the numbered
+ * record: a live rendering hint produced beside the turn rather than by
+ * it. Two things carry it -- message_delta, and the approval_required the
+ * agent's HTTP surface emits before the graph blocks on a human -- and
+ * neither may consume a number the record needs.
+ */
+export const OUT_OF_BAND = -1;
 
 export type KnownEventType = (typeof EVENT_TYPES)[number];
 
@@ -89,13 +99,32 @@ export function replay(events: AssistantEvent[]): Conversation {
   const order: string[] = [];
   const errors: Record<string, unknown>[] = [];
   const seen: number[] = [];
+  // Prose that has arrived in fragments and has not yet been closed by the
+  // authoritative message. Held apart from `text` so the message can
+  // replace it rather than land beside it as a duplicate.
+  let pending = '';
 
   for (const event of events) {
-    seen.push(event.seq);
+    // An out-of-band event is not part of the numbered record. Counted
+    // here it would drag the low end of the range down and invent gaps
+    // that never happened.
+    if (event.seq !== OUT_OF_BAND) seen.push(event.seq);
+
     const data = (event.data ?? {}) as Record<string, any>;
 
+    if (event.type === 'message_delta') {
+      pending += data.text;
+      continue;
+    }
+
     if (event.type === 'message') {
+      // The message wins. Its text is redacted over the whole answer and
+      // may legitimately differ from the sum of the fragments -- a link
+      // the agent repeated out of a product description is removed there
+      // and only there -- so where they differ, this is the one that
+      // stays on screen.
       text.push(data.text);
+      pending = '';
       continue;
     }
 
@@ -154,6 +183,12 @@ export function replay(events: AssistantEvent[]): Conversation {
     // Any other type is ignored on purpose. A newer agent must not be
     // able to break an older reader.
   }
+
+  // A run of fragments no message ever closed: the turn is still in
+  // flight, or it was cut off. Either way the words are already on the
+  // customer's screen, and dropping them now would erase something they
+  // read -- a worse lie than an unfinished sentence.
+  if (pending) text.push(pending);
 
   const gaps: number[] = [];
   if (seen.length > 0) {

@@ -33,6 +33,55 @@ function event(seq: number, type: string, data: unknown) {
   return `event: assistant\ndata: ${JSON.stringify({ v: 1, seq, type, data })}\n\n`;
 }
 
+// A stream the TEST decides when to feed. streamOf above hands over
+// everything at once, which cannot tell "shown while arriving" from
+// "shown once finished" -- the exact distinction this feature is about.
+function controlledStream() {
+  const encoder = new TextEncoder();
+  const waiting: string[] = [];
+  let pending: ((value: unknown) => void) | null = null;
+  let ended = false;
+
+  const deliver = (value: unknown) => {
+    const resolve = pending!;
+    pending = null;
+    resolve(value);
+  };
+
+  return {
+    response: {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => {
+            if (waiting.length) {
+              return Promise.resolve({
+                done: false,
+                value: encoder.encode(waiting.shift()!),
+              });
+            }
+            if (ended) return Promise.resolve({ done: true, value: undefined });
+            return new Promise((resolve) => {
+              pending = resolve;
+            });
+          },
+        }),
+      },
+    } as unknown as Response,
+
+    push(wire: string) {
+      if (pending) deliver({ done: false, value: encoder.encode(wire) });
+      else waiting.push(wire);
+    },
+
+    end() {
+      ended = true;
+      if (pending) deliver({ done: true, value: undefined });
+    },
+  };
+}
+
 function renderWidget() {
   return render(
     <AssistantProvider>
@@ -200,6 +249,80 @@ describe('AssistantWidget', () => {
       expect(screen.getByText(/evil\.example\.com/)).toBeInTheDocument()
     );
     expect(container.querySelector('a')).toBeNull();
+  });
+
+  it('shows the answer while it is still arriving', async () => {
+    // The complaint this feature answers: the whole reply appeared at
+    // once, after a long silence. Asserted against a stream the test
+    // feeds one fragment at a time, because a stream delivered in one
+    // go looks identical to a finished answer.
+    const stream = controlledStream();
+    global.fetch = jest.fn().mockResolvedValue(stream.response);
+
+    renderWidget();
+    await open();
+    await ask();
+
+    await act(async () => {
+      stream.push(event(-1, 'message_delta', { text: 'Your most ' }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/Your most/)).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      stream.push(event(-1, 'message_delta', { text: 'recent order is ORD-1.' }));
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText('Your most recent order is ORD-1.')
+      ).toBeInTheDocument()
+    );
+  });
+
+  it('does not show the answer twice when the finished message lands', async () => {
+    // The rule the whole delta design turns on: the authoritative message
+    // REPLACES the fragments rather than joining them. Get this wrong and
+    // the customer reads the reply, then reads it again underneath.
+    const answer = 'Your most recent order is ORD-1.';
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        streamOf(
+          event(-1, 'message_delta', { text: 'Your most recent ' }) +
+            event(-1, 'message_delta', { text: 'order is ORD-1.' }) +
+            event(0, 'message', { text: answer })
+        )
+      );
+
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() => expect(screen.getByText(answer)).toBeInTheDocument());
+    expect(screen.getAllByText(answer)).toHaveLength(1);
+  });
+
+  it('keeps the redacted wording when the fragments carried a link', async () => {
+    // The fragments are redacted a word at a time and the message over
+    // the whole answer. Where they differ the message wins -- so what
+    // stays on screen is the redacted text, not the fragment that
+    // happened to arrive first.
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        event(-1, 'message_delta', { text: 'Visit https://evil.example.com/x' }) +
+          event(0, 'message', { text: 'Visit [link removed]' })
+      )
+    );
+
+    const { container } = renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByText(/link removed/)).toBeInTheDocument()
+    );
+    expect(container.textContent).not.toContain('evil.example.com');
   });
 
   it('shows the customer their own question', async () => {

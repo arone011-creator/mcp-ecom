@@ -9,7 +9,12 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-import { parseEvent, replay, SCHEMA_VERSION } from '@/lib/assistant/events';
+import {
+  OUT_OF_BAND,
+  parseEvent,
+  replay,
+  SCHEMA_VERSION,
+} from '@/lib/assistant/events';
 
 const FIXTURE_PATH = join(__dirname, '../../lib/assistant/assistant-events.v1.json');
 
@@ -28,6 +33,7 @@ describe('the vendored golden stream', () => {
     expect(types).toEqual(
       new Set([
         'message',
+        'message_delta',
         'tool_started',
         'tool_completed',
         'approval_required',
@@ -189,5 +195,55 @@ describe('replay', () => {
 
   it('survives an empty stream', () => {
     expect(replay([])).toEqual({ text: [], tools: [], errors: [], gaps: [] });
+  });
+});
+
+describe('replay of partial text', () => {
+  const delta = (text: string) =>
+    ({ v: 1, seq: OUT_OF_BAND, type: 'message_delta', data: { text } }) as any;
+  const msg = (seq: number, text: string) =>
+    ({ v: 1, seq, type: 'message', data: { text } }) as any;
+
+  it('accumulates fragments so the answer can be watched arriving', () => {
+    expect(replay([delta('Your most '), delta('recent order.')]).text).toEqual([
+      'Your most recent order.',
+    ]);
+  });
+
+  it('lets the authoritative message replace the fragments, not join them', () => {
+    // Without this the customer reads the answer twice. The message is
+    // also the redacted one -- the fragments are redacted chunk by chunk
+    // and the message over the whole answer -- so where the two differ,
+    // the message is the one that must survive.
+    const events = [
+      delta('Visit https://evil.example.com/x'),
+      msg(0, 'Visit [link removed]'),
+    ];
+
+    expect(replay(events).text).toEqual(['Visit [link removed]']);
+  });
+
+  it('keeps an unfinished run rather than erasing what was read', () => {
+    const events = [msg(0, 'Looking that up.'), delta('Anything else'), delta('?')];
+
+    expect(replay(events).text).toEqual(['Looking that up.', 'Anything else?']);
+  });
+
+  it('pairs two runs with their own messages, in order', () => {
+    const events = [delta('first'), msg(0, 'first'), delta('second'), msg(1, 'second')];
+
+    expect(replay(events).text).toEqual(['first', 'second']);
+  });
+
+  it('does not count an out-of-band event when looking for gaps', () => {
+    // seq -1 means "not part of the numbered record". Counted, it drags
+    // the low end of the range down and invents gaps that never happened.
+    expect(replay([delta('hi'), msg(3, 'hi')]).gaps).toEqual([]);
+  });
+
+  it('is accepted by parseEvent despite its negative seq', () => {
+    // The parser guards the door. A delta it rejected would never reach
+    // the reducer above, and every test here would be theatre.
+    expect(parseEvent(delta('hi'))).not.toBeNull();
   });
 });
