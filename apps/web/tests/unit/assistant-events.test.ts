@@ -194,7 +194,13 @@ describe('replay', () => {
   });
 
   it('survives an empty stream', () => {
-    expect(replay([])).toEqual({ text: [], tools: [], errors: [], gaps: [] });
+    expect(replay([])).toEqual({
+      text: [],
+      tools: [],
+      errors: [],
+      gaps: [],
+      timeline: [],
+    });
   });
 });
 
@@ -245,5 +251,120 @@ describe('replay of partial text', () => {
     // The parser guards the door. A delta it rejected would never reach
     // the reducer above, and every test here would be theatre.
     expect(parseEvent(delta('hi'))).not.toBeNull();
+  });
+});
+
+describe('replay ordering', () => {
+  const msg = (seq: number, text: string) =>
+    ({ v: 1, seq, type: 'message', data: { text } }) as any;
+  const delta = (text: string) =>
+    ({ v: 1, seq: OUT_OF_BAND, type: 'message_delta', data: { text } }) as any;
+  const started = (seq: number, callId: string) =>
+    ({
+      v: 1,
+      seq,
+      type: 'tool_started',
+      data: { call_id: callId, tool: 'get_orders', arguments: {} },
+    }) as any;
+
+  it('keeps prose and tools in the order they happened', () => {
+    // The bug this exists for: three parallel lists cannot say what came
+    // before what, so the panel grouped all questions, then all chips,
+    // then all answers.
+    const events = [
+      msg(0, 'Let me look.'),
+      started(1, 'c1'),
+      msg(2, 'You ordered ORD-1.'),
+    ];
+
+    expect(replay(events).timeline).toEqual([
+      { kind: 'text', text: 'Let me look.' },
+      { kind: 'tool', call_id: 'c1' },
+      { kind: 'text', text: 'You ordered ORD-1.' },
+    ]);
+  });
+
+  it('lists one call once, however many events it emits', () => {
+    const events = [
+      {
+        v: 1,
+        seq: 0,
+        type: 'approval_required',
+        data: { call_id: 'c1', tool: 'cancel_order', arguments: {} },
+      },
+      started(1, 'c1'),
+      {
+        v: 1,
+        seq: 2,
+        type: 'tool_completed',
+        data: { call_id: 'c1', tool: 'cancel_order', ok: true, result: {} },
+      },
+    ] as any;
+
+    expect(replay(events).timeline).toEqual([{ kind: 'tool', call_id: 'c1' }]);
+  });
+
+  it('names a tool rather than embedding it', () => {
+    // A tool's state changes after it appears. An embedded snapshot would
+    // be captured as "working" and stay that way forever.
+    const events = [
+      started(0, 'c1'),
+      {
+        v: 1,
+        seq: 1,
+        type: 'tool_completed',
+        data: { call_id: 'c1', tool: 'get_orders', ok: true, result: [] },
+      },
+    ] as any;
+
+    const conversation = replay(events);
+
+    expect(conversation.timeline).toEqual([{ kind: 'tool', call_id: 'c1' }]);
+    expect(conversation.tools[0].ok).toBe(true);
+  });
+
+  it('finalises a run of fragments in place, keeping its position', () => {
+    const events = [
+      delta('Visit https://evil.example.com/x'),
+      started(0, 'c1'),
+      msg(1, 'Visit [link removed]'),
+    ];
+
+    expect(replay(events).timeline).toEqual([
+      { kind: 'text', text: 'Visit https://evil.example.com/x' },
+      { kind: 'tool', call_id: 'c1' },
+      { kind: 'text', text: 'Visit [link removed]' },
+    ]);
+  });
+
+  it('closes an open run of fragments when a tool intervenes', () => {
+    const events = [delta('Checking'), started(0, 'c1'), delta('Found it')];
+
+    expect(replay(events).timeline).toEqual([
+      { kind: 'text', text: 'Checking' },
+      { kind: 'tool', call_id: 'c1' },
+      { kind: 'text', text: 'Found it' },
+    ]);
+  });
+
+  it('gives a turn failure its place in the order', () => {
+    const events = [
+      msg(0, 'Looking that up.'),
+      {
+        v: 1,
+        seq: 1,
+        type: 'error',
+        data: { message: 'Could not reach the shop.', retryable: true },
+      },
+    ] as any;
+
+    expect(replay(events).timeline).toEqual([
+      { kind: 'text', text: 'Looking that up.' },
+      { kind: 'error', message: 'Could not reach the shop.', retryable: true },
+    ]);
+  });
+
+  it('has an empty timeline for an empty stream', () => {
+    expect(replay([]).timeline).toEqual([]);
   });
 });

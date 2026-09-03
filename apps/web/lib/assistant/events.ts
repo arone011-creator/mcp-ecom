@@ -62,11 +62,25 @@ export interface ToolActivity {
   error?: string;
 }
 
+/**
+ * One entry in the ordered view of a conversation.
+ *
+ * A tool is NAMED, not embedded. Its state changes after it first appears,
+ * so an embedded snapshot would be captured as "working" and stay that way
+ * forever; `timeline` says where it sits and `tools` says what became of it.
+ */
+export type TimelineItem =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; call_id: string }
+  | ({ kind: 'error' } & Record<string, unknown>);
+
 export interface Conversation {
   text: string[];
   tools: ToolActivity[];
   errors: Record<string, unknown>[];
   gaps: number[];
+  /** The same conversation, in the order it happened. */
+  timeline: TimelineItem[];
 }
 
 const envelope = z.object({
@@ -103,6 +117,21 @@ export function replay(events: AssistantEvent[]): Conversation {
   // authoritative message. Held apart from `text` so the message can
   // replace it rather than land beside it as a duplicate.
   let pending = '';
+  // The ordered view. text/tools/errors are three parallel lists and so
+  // cannot say what came before what, which is all a transcript is.
+  const timeline: TimelineItem[] = [];
+  // Index of the text item still being written, or null.
+  let openText: number | null = null;
+  // call_ids already placed. One call can emit approval_required,
+  // tool_started AND tool_completed, and it is one thing on screen.
+  const charted = new Set<string>();
+
+  const chart = (callId: string) => {
+    openText = null;
+    if (charted.has(callId)) return;
+    charted.add(callId);
+    timeline.push({ kind: 'tool', call_id: callId });
+  };
 
   for (const event of events) {
     // An out-of-band event is not part of the numbered record. Counted
@@ -114,6 +143,11 @@ export function replay(events: AssistantEvent[]): Conversation {
 
     if (event.type === 'message_delta') {
       pending += data.text;
+      if (openText === null) {
+        timeline.push({ kind: 'text', text: '' });
+        openText = timeline.length - 1;
+      }
+      (timeline[openText] as { kind: 'text'; text: string }).text += data.text;
       continue;
     }
 
@@ -125,11 +159,20 @@ export function replay(events: AssistantEvent[]): Conversation {
       // stays on screen.
       text.push(data.text);
       pending = '';
+      if (openText === null) {
+        timeline.push({ kind: 'text', text: data.text });
+      } else {
+        // In place, so the answer keeps its position relative to tool
+        // calls that came after it.
+        (timeline[openText] as { kind: 'text'; text: string }).text = data.text;
+        openText = null;
+      }
       continue;
     }
 
     if (event.type === 'tool_started' || event.type === 'approval_required') {
       const callId = data.call_id as string;
+      chart(callId);
 
       // One call, not two. An approved high-risk call emits
       // approval_required and then tool_started under the SAME call_id;
@@ -156,6 +199,7 @@ export function replay(events: AssistantEvent[]): Conversation {
 
     if (event.type === 'tool_completed') {
       const callId = data.call_id as string;
+      chart(callId);
 
       // A completion without its start still records: half a pair is a
       // symptom worth seeing, not one worth swallowing.
@@ -177,6 +221,8 @@ export function replay(events: AssistantEvent[]): Conversation {
 
     if (event.type === 'error') {
       errors.push(data);
+      openText = null;
+      timeline.push({ kind: 'error', ...data });
       continue;
     }
 
@@ -198,5 +244,11 @@ export function replay(events: AssistantEvent[]): Conversation {
     }
   }
 
-  return { text, tools: order.map((callId) => tools.get(callId)!), errors, gaps };
+  return {
+    text,
+    tools: order.map((callId) => tools.get(callId)!),
+    errors,
+    gaps,
+    timeline,
+  };
 }
