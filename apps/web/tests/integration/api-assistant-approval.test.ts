@@ -251,6 +251,33 @@ describe('POST a decision', () => {
     expect(new Headers(init.headers).get('mcp-session-id')).toBe('mcp-sess-9');
   });
 
+  it('mints a bearer carrying the same claims the bridge mints', async () => {
+    // mint.ts is factored out so its callers cannot drift about what goes
+    // into a token, and its header warns that "an extra claim in one and
+    // not the other is the kind of difference nothing fails on until it
+    // matters". Nothing fails on it today -- the MCP mint route only
+    // checks that a bearer is present -- so only a test keeps them equal.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    pending();
+    const fetchMock = global.fetch as jest.Mock;
+
+    await decide(true);
+
+    const [, init] = callsTo(fetchMock, '/approvals')[0];
+    const bearer = new Headers(init.headers).get('authorization')!;
+    const { decode } = jest.requireActual('next-auth/jwt');
+    const claims = await decode({
+      token: bearer.replace('Bearer ', ''),
+      secret: process.env.NEXTAUTH_SECRET!,
+    });
+
+    expect(claims).toMatchObject({
+      sub: 'user_a',
+      email: 'a@x.com',
+      role: 'USER',
+    });
+  });
+
   it('hands the agent the minted token and nothing else', async () => {
     mockGetToken.mockResolvedValue(SIGNED_IN);
     pending();

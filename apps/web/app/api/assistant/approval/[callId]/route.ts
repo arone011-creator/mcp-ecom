@@ -28,7 +28,7 @@ import { getToken } from 'next-auth/jwt';
 
 import prisma from '@/lib/prisma';
 import { fail, ok } from '../../../v1/_lib/respond';
-import { mintBearer } from '../../../v1/_lib/mint';
+import { mintBearer, type MintableSession } from '../../../v1/_lib/mint';
 import { REFRESH_TTL_SECONDS } from '../../../v1/auth/refresh/route';
 import {
   claimApproval,
@@ -54,7 +54,11 @@ async function approvalFor(
   callId: string
 ): Promise<
   | { error: Response }
-  | { userId: string; approval: PendingApproval; secret: string }
+  | {
+      identity: MintableSession;
+      approval: PendingApproval;
+      secret: string;
+    }
 > {
   const secret = process.env.NEXTAUTH_SECRET;
   const session = secret ? await getToken({ req, secret }) : null;
@@ -67,7 +71,22 @@ async function approvalFor(
     return { error: fail(404, 'No approval is waiting') };
   }
 
-  return { userId: session.sub as string, approval, secret };
+  return {
+    // The WHOLE claim set, not just the id. mint.ts exists so its two
+    // callers cannot drift about what goes into a token, and its header
+    // names this exact failure: "an extra claim in one and not the other
+    // is the kind of difference nothing fails on until it matters".
+    // Nothing fails on it today -- the MCP mint route only checks that a
+    // bearer is present -- which is precisely why it would have sat here
+    // until something did.
+    identity: {
+      sub: session.sub as string,
+      email: session.email,
+      role: session.role,
+    },
+    approval,
+    secret,
+  };
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
@@ -75,7 +94,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   const found = await approvalFor(req, callId);
   if ('error' in found) return found.error;
 
-  const { approval, userId } = found;
+  const { approval, identity } = found;
+  const userId = identity.sub;
 
   // The event named WHICH order. This answers WHAT is true about it.
   const orderId = approval.arguments.order_id;
@@ -133,7 +153,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const found = await approvalFor(req, callId);
   if ('error' in found) return found.error;
 
-  const { approval, secret, userId } = found;
+  const { approval, secret, identity } = found;
 
   let body: unknown;
   try {
@@ -167,7 +187,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (approved) {
     try {
-      token = await mint(approval, approvalsUrl!, secret, userId);
+      token = await mint(approval, approvalsUrl!, secret, identity);
     } catch (error) {
       console.error('Minting an approval failed:', error);
       // Nothing was approved, so nothing is spent. Handing the approval
@@ -211,9 +231,9 @@ async function mint(
   approval: PendingApproval,
   approvalsUrl: string,
   secret: string,
-  userId: string
+  identity: MintableSession
 ): Promise<string> {
-  const bearer = await mintBearer({ sub: userId }, secret, REFRESH_TTL_SECONDS);
+  const bearer = await mintBearer(identity, secret, REFRESH_TTL_SECONDS);
 
   const response = await fetch(approvalsUrl, {
     method: 'POST',
