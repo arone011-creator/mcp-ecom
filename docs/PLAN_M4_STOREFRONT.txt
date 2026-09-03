@@ -222,7 +222,7 @@ Each task ends in a commit, and stops for review. Every task that changes
 behaviour must include a test that has been seen to FAIL before it passes -
 this project has already shipped, and caught, tests that could not fail.
 
-TASK 1 - FREEZE THE EVENT SCHEMA
+TASK 1 - FREEZE THE EVENT SCHEMA    [DONE 2026-09-03]
     Define the five event types and their fields in lib/assistant/events.ts,
     with a parser and a version field.
     MUST PROVE: an unknown event type is ignored rather than crashing the
@@ -266,6 +266,33 @@ TASK 1 - FREEZE THE EVENT SCHEMA
     missing `seq` is reported as a gap rather than smoothed over,
     because a dropped event means the screen is not showing what
     happened.
+
+    BUILT. lib/assistant/events.ts, with the golden stream vendored
+    byte-for-byte at lib/assistant/assistant-events.v1.json. The
+    TypeScript reducer reaches the identical `expected` conversation the
+    Python one does; that assertion is the cross-repository anchor, and
+    it was mutation-checked rather than assumed -- removing the
+    duplicate-call guard makes it fail.
+
+    THE DIVISION OF LABOUR, which Task 4 needs to know:
+
+        parseEvent(raw)   -> AssistantEvent | null.  NEVER THROWS.
+        replay(events)    -> Conversation.  Sees only parsed events.
+
+    A null from parseEvent means DROP THIS FRAME AND KEEP GOING. It is
+    not an error to surface and not a reason to stop reading the stream.
+
+    ONE DELIBERATE ASYMMETRY WITH THE PYTHON, recorded so it does not
+    read as drift later. agent/events.py::replay THROWS on an event from
+    a future schema version -- right for a harness, which should stop
+    loudly when handed something it does not understand. Wrong here: a
+    throw mid-stream leaves the customer with half a conversation and no
+    way forward. So this half drops the frame instead, and the module
+    header says why.
+
+    Fourteen malformed inputs are covered, including a future version, a
+    fractional seq, an array, and a missing data object. 258 unit tests
+    pass; type-check clean.
 
 TASK 2 - SHORT-LIVED TOKENS FROM A SESSION, WITHOUT A PASSWORD
     POST /api/v1/auth/refresh: read the session cookie, mint a 15-minute
