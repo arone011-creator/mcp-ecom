@@ -114,6 +114,16 @@ global.File = jest.fn().mockImplementation((bits, name, options) => ({
 global.URL.createObjectURL = jest.fn(() => 'mocked-object-url');
 global.URL.revokeObjectURL = jest.fn();
 
+// jsdom ships no TextEncoder/TextDecoder, and anything that reads a
+// streamed response needs them -- the assistant provider decodes SSE
+// chunks. Node's own implementations, not a mock: this is a gap in the
+// environment rather than a dependency to fake.
+if (typeof global.TextEncoder === 'undefined') {
+  const { TextEncoder, TextDecoder } = require('util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}
+
 // Mock ResizeObserver
 global.ResizeObserver = jest.fn().mockImplementation(() => ({
   observe: jest.fn(),
