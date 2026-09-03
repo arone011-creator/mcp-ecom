@@ -14,6 +14,8 @@
 
 import type { ToolActivity as Activity } from '@/lib/assistant/events';
 
+import { ApprovalCard } from './approval-card';
+
 // Customer-facing wording. The tool's own name is an implementation
 // detail, and "get_orders" is not something to show a shopper.
 const LABELS: Record<string, string> = {
@@ -35,14 +37,6 @@ function label(tool: string): string {
 }
 
 function state(activity: Activity): { text: string; className: string } {
-  if (activity.awaiting_approval) {
-    // Task 5 brings the button. Until then this says what is true --
-    // waiting on you -- rather than offering a control that does nothing.
-    return {
-      text: 'waiting for your approval',
-      className: 'bg-amber-50 text-amber-800 border-amber-200',
-    };
-  }
   if (activity.ok === undefined) {
     return {
       text: 'working',
@@ -67,6 +61,18 @@ export function ToolActivityList({ tools }: { tools: Activity[] }) {
   return (
     <ul className="flex flex-col gap-1" aria-label="Assistant activity">
       {tools.map((activity) => {
+        // A call waiting on a human is not a status chip; it is a
+        // decision. The card renders from a fresh server-side lookup of
+        // what the action affects -- never from these arguments, and
+        // never from anything the model wrote.
+        if (activity.awaiting_approval) {
+          return (
+            <li key={activity.call_id}>
+              <ApprovalCard callId={activity.call_id} tool={activity.tool} />
+            </li>
+          );
+        }
+
         const shown = state(activity);
 
         return (

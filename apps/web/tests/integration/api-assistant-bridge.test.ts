@@ -18,6 +18,7 @@ import { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
 import { POST } from '@/app/api/assistant/route';
+import { recallApproval, resetApprovals } from '@/lib/assistant/approvals';
 import { recallTurn } from '@/lib/assistant/turns';
 
 const mockGetToken = getToken as unknown as jest.Mock;
@@ -51,6 +52,7 @@ beforeEach(() => {
   process.env.AGENT_SERVICE_URL = 'https://agent.example.com';
   process.env.AGENT_SERVICE_KEY = 'agent-key';
   mockGetToken.mockReset();
+  resetApprovals();
 });
 
 afterAll(() => {
@@ -154,6 +156,73 @@ describe('POST /api/assistant', () => {
     await (await POST(ask())).text();
 
     expect(recallTurn('t_done')).toBeNull();
+  });
+
+  it('records an approval it saw go past, so the browser need not send it back', async () => {
+    // THE PROPERTY TASK 5 RESTS ON. The approve route mints a token bound
+    // to a hash of these arguments. Taken from a request body they would
+    // certify whatever the caller claimed; taken from here they are what
+    // the agent actually asked for. The frame is still forwarded -- the
+    // customer has to see WHICH action is waiting -- it is merely also
+    // remembered.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds(
+      'event: control\ndata: {"turn_id":"t_hold","session_id":"mcp-sess-9"}\n\n' +
+        'event: assistant\ndata: {"v":1,"seq":0,"type":"approval_required",' +
+        '"data":{"call_id":"c1","tool":"cancel_order",' +
+        '"arguments":{"order_id":"ord_9"}}}\n\n'
+    );
+
+    const response = await POST(ask());
+    const reader = response.body!.getReader();
+    const forwarded = new TextDecoder().decode((await reader.read()).value);
+
+    expect(recallApproval('c1')).toMatchObject({
+      turnId: 't_hold',
+      tool: 'cancel_order',
+      arguments: { order_id: 'ord_9' },
+      sessionId: 'mcp-sess-9',
+      userId: 'user_1',
+      decided: false,
+    });
+    expect(forwarded).toContain('approval_required');
+
+    await reader.cancel();
+  });
+
+  it('forgets a pending approval once the conversation is over', async () => {
+    // The agent has stopped waiting; approving now would resume nothing.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds(
+      'event: control\ndata: {"turn_id":"t_gone","session_id":"s"}\n\n' +
+        'event: assistant\ndata: {"v":1,"seq":0,"type":"approval_required",' +
+        '"data":{"call_id":"c_gone","tool":"cancel_order",' +
+        '"arguments":{"order_id":"ord_9"}}}\n\n'
+    );
+
+    await (await POST(ask())).text();
+
+    expect(recallApproval('c_gone')).toBeNull();
+  });
+
+  it('does not record an approval frame that arrived before any turn', async () => {
+    // Without a control frame there is no session to mint against and no
+    // turn to resume. Recording it would produce an approval that can
+    // only fail later, further from the cause.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds(
+      'event: assistant\ndata: {"v":1,"seq":0,"type":"approval_required",' +
+        '"data":{"call_id":"c_orphan","tool":"cancel_order",' +
+        '"arguments":{"order_id":"ord_9"}}}\n\n'
+    );
+
+    const response = await POST(ask());
+    const reader = response.body!.getReader();
+    await reader.read();
+
+    expect(recallApproval('c_orphan')).toBeNull();
+
+    await reader.cancel();
   });
 
   it('reports an agent that refuses without leaking why', async () => {

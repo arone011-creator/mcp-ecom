@@ -34,6 +34,17 @@ import { SseParser } from '@/lib/assistant/sse';
 
 export type AssistantStatus = 'idle' | 'streaming' | 'error';
 
+/**
+ * What this browser has done about a pending approval.
+ *
+ * LOCAL ONLY, and deliberately not part of the conversation. It says what
+ * the customer clicked, never what the shop did -- 'approved' means "the
+ * answer was delivered", and whether the order was actually cancelled is
+ * reported by the tool_completed event like every other tool result. A
+ * high-risk action never renders optimistically.
+ */
+export type DecisionState = 'sending' | 'approved' | 'declined' | 'failed';
+
 export interface Turn {
   utterance: string;
 }
@@ -44,6 +55,8 @@ interface AssistantContextValue {
   turns: Turn[];
   status: AssistantStatus;
   send: (utterance: string) => Promise<void>;
+  approve: (callId: string, approved: boolean) => Promise<void>;
+  answered: Record<string, DecisionState>;
 }
 
 const AssistantContext = createContext<AssistantContextValue | undefined>(
@@ -54,6 +67,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<AssistantEvent[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [status, setStatus] = useState<AssistantStatus>('idle');
+  const [answered, setAnswered] = useState<Record<string, DecisionState>>({});
 
   // A ref rather than the state value: two clicks in the same tick would
   // both read the same stale `status` and both fire.
@@ -123,12 +137,51 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Answer a pending approval.
+   *
+   * Sends a call_id and a yes or no. NOT the arguments, NOT the order --
+   * the route recalls those from what the bridge watched go past, because
+   * a token minted for arguments a browser supplied would certify
+   * whatever the browser claimed. See lib/assistant/approvals.ts.
+   *
+   * Marked as 'sending' before the request so the buttons disappear on
+   * the first click rather than the first response. The route refuses a
+   * second decision anyway, and so does the agent; this is the third
+   * guard, and the only one that stops the customer seeing two buttons
+   * they think still work.
+   */
+  const approve = useCallback(async (callId: string, approved: boolean) => {
+    setAnswered((previous) => {
+      if (previous[callId]) return previous;
+      return { ...previous, [callId]: 'sending' };
+    });
+
+    try {
+      const response = await fetch(
+        `/api/assistant/approval/${encodeURIComponent(callId)}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ approved }),
+        }
+      );
+
+      setAnswered((previous) => ({
+        ...previous,
+        [callId]: response.ok ? (approved ? 'approved' : 'declined') : 'failed',
+      }));
+    } catch {
+      setAnswered((previous) => ({ ...previous, [callId]: 'failed' }));
+    }
+  }, []);
+
   // The single source of truth for what is on screen.
   const conversation = useMemo(() => replay(events), [events]);
 
   const value = useMemo(
-    () => ({ events, conversation, turns, status, send }),
-    [events, conversation, turns, status, send]
+    () => ({ events, conversation, turns, status, send, approve, answered }),
+    [events, conversation, turns, status, send, approve, answered]
   );
 
   return (

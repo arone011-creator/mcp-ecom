@@ -26,6 +26,7 @@ import { fail } from '../v1/_lib/respond';
 import { mintBearer } from '../v1/_lib/mint';
 import { REFRESH_TTL_SECONDS } from '../v1/auth/refresh/route';
 import { SseParser } from '@/lib/assistant/sse';
+import { forgetApprovalsOf, rememberApproval } from '@/lib/assistant/approvals';
 import { forgetTurn, rememberTurn } from '@/lib/assistant/turns';
 
 export const runtime = 'nodejs';
@@ -100,6 +101,43 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const reader = upstream.body.getReader();
   const seenTurns: string[] = [];
+  // The turn this stream belongs to, learned from the control frame that
+  // always arrives first. An approval frame is meaningless without it:
+  // there would be no session to mint against and no turn to resume.
+  let openTurn: { turnId: string; sessionId: string } | null = null;
+
+  function rememberIfApproval(data: string): void {
+    if (!openTurn) return;
+
+    try {
+      const event = JSON.parse(data) as {
+        type?: string;
+        data?: { call_id?: string; tool?: string; arguments?: unknown };
+      };
+
+      if (event.type !== 'approval_required') return;
+
+      const { call_id: callId, tool, arguments: args } = event.data ?? {};
+      if (!callId || !tool) return;
+
+      rememberApproval(callId, {
+        turnId: openTurn.turnId,
+        tool,
+        arguments: (args ?? {}) as Record<string, unknown>,
+        sessionId: openTurn.sessionId,
+        userId: session!.sub as string,
+      });
+    } catch {
+      // A frame we cannot read is one we cannot act on. Never a reason
+      // to break the customer's stream.
+    }
+  }
+
+  function endTurns(): void {
+    // Order matters: the approvals are keyed by turn, so they go first.
+    seenTurns.forEach(forgetApprovalsOf);
+    seenTurns.forEach(forgetTurn);
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -107,7 +145,7 @@ export async function POST(req: NextRequest) {
 
       if (done) {
         // The conversation is over; nothing may approve it now.
-        seenTurns.forEach(forgetTurn);
+        endTurns();
         controller.close();
         return;
       }
@@ -125,6 +163,10 @@ export async function POST(req: NextRequest) {
                 userId: session.sub as string,
               });
               seenTurns.push(control.turn_id);
+              openTurn = {
+                turnId: control.turn_id,
+                sessionId: control.session_id,
+              };
             }
           } catch {
             // A control frame we cannot read is one we cannot act on.
@@ -134,6 +176,12 @@ export async function POST(req: NextRequest) {
         }
 
         if (item.event === 'assistant') {
+          // Watched on the way past, not intercepted: the customer must
+          // still see WHICH action is waiting. What is kept is the part
+          // the approve route may not take from a browser -- the exact
+          // arguments the token will be bound to. See lib/assistant/
+          // approvals.ts for why that round trip is the whole risk.
+          rememberIfApproval(item.data);
           controller.enqueue(encoder.encode(frame('assistant', item.data)));
         }
 
@@ -142,7 +190,7 @@ export async function POST(req: NextRequest) {
       }
     },
     cancel() {
-      seenTurns.forEach(forgetTurn);
+      endTurns();
       reader.cancel().catch(() => {});
     },
   });

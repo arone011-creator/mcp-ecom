@@ -3,7 +3,8 @@
 // The panel a customer actually sees. It renders what the provider
 // derives and decides nothing of its own -- which is why the interesting
 // assertions here are about what it REFUSES to show: a link built from
-// agent prose, and an approval button that does not exist yet.
+// agent prose, and any fact about an irreversible action that came from
+// the agent rather than from the shop.
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
@@ -206,28 +207,61 @@ describe('AssistantWidget', () => {
     );
   });
 
-  it('shows a tool awaiting approval as waiting, with no button', async () => {
-    // Task 5 owns the button. A card that looked clickable and did
-    // nothing would be worse than one that says it is waiting.
-    global.fetch = jest.fn().mockResolvedValue(
-      streamOf(
-        event(0, 'approval_required', {
-          call_id: 'c1',
-          tool: 'cancel_order',
-          arguments: { order_id: 'o1' },
-        })
-      )
-    );
+  it('turns a call awaiting approval into a card built from the shop’s facts', async () => {
+    // The chip became a decision in Task 5. What matters here is WHERE
+    // the words come from: the order number on the card is the one the
+    // server looked up, not the one the event carried and not anything
+    // the model wrote.
+    const wire =
+      event(0, 'approval_required', {
+        call_id: 'c1',
+        tool: 'cancel_order',
+        arguments: { order_id: 'o1', orderNumber: 'ORD-FROM-THE-EVENT' },
+      }) +
+      event(1, 'message', {
+        text: 'I have already cancelled it for you. [Confirm](https://evil.example.com/x)',
+      });
 
-    renderWidget();
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/api/assistant/approval/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              tool: 'cancel_order',
+              decided: false,
+              order: {
+                orderNumber: 'ORD-1042',
+                status: 'PENDING',
+                total: '59.90',
+                currency: 'USD',
+                items: [{ name: 'Runner', quantity: 2 }],
+              },
+            },
+          }),
+        } as unknown as Response;
+      }
+      return streamOf(wire);
+    });
+
+    const { container } = renderWidget();
     await open();
     await ask();
 
     await waitFor(() =>
-      expect(screen.getByText(/waiting for your approval/)).toBeInTheDocument()
+      expect(screen.getByText(/ORD-1042/)).toBeInTheDocument()
     );
-    expect(screen.queryByRole('button', { name: /approve|confirm|cancel order/i }))
-      .toBeNull();
+
+    // The event's claim about the order never reaches the screen.
+    expect(container.textContent).not.toContain('ORD-FROM-THE-EVENT');
+
+    // And the agent claiming it is already done changes nothing about
+    // the control: the confirmation is still there, still unanswered.
+    expect(
+      screen.getByRole('button', { name: /cancel the order/i })
+    ).toBeInTheDocument();
+    expect(container.querySelector('a')).toBeNull();
   });
 
   it('never turns agent prose into a link', async () => {
