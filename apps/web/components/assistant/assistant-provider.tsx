@@ -24,6 +24,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useRouter } from 'next/navigation';
 
 import {
   type AssistantEvent,
@@ -71,6 +72,16 @@ export interface TranscriptEntry {
   conversation: Conversation;
 }
 
+/**
+ * Tools that change something the rest of the site renders.
+ *
+ * Used to decide whether the page around the panel is now stale. Not a
+ * list of write tools in general -- a write nobody renders needs no
+ * refresh, and refreshing anyway would cost a re-render of every server
+ * component on the page for nothing.
+ */
+const CHANGING_TOOLS = new Set(['add_to_cart', 'remove_from_cart', 'cancel_order']);
+
 interface AssistantContextValue {
   /** The conversation being had, or null before the first message. */
   conversationId: string | null;
@@ -89,6 +100,8 @@ interface AssistantContextValue {
   transcript: TranscriptEntry[];
   status: AssistantStatus;
   send: (utterance: string) => Promise<void>;
+  /** Ask the last question again, after a tool call failed. */
+  retry: () => void;
   approve: (callId: string, approved: boolean) => Promise<void>;
   answered: Record<string, DecisionState>;
 }
@@ -100,6 +113,9 @@ const AssistantContext = createContext<AssistantContextValue | undefined>(
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [status, setStatus] = useState<AssistantStatus>('idle');
+  // How a change made in the panel reaches the pages around it. See the
+  // refresh in send() for why this is needed at all.
+  const router = useRouter();
   const [answered, setAnswered] = useState<Record<string, DecisionState>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ListedChat[]>([]);
@@ -186,6 +202,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     // Captured BEFORE anything is sent. By the time the stream ends this
     // turn is already in `turns`, so asking then would always say no.
     const wasFirstTurn = turns.length === 0;
+    // Whether this turn changed something the pages around the panel
+    // render. Tracked as the events arrive rather than read off state
+    // afterwards, because state has not settled when the stream ends.
+    let changedSomething = false;
     // The chat this turn belongs to, held in a local rather than read
     // back off state: setConversationId below has not settled by the time
     // the naming request goes out.
@@ -241,6 +261,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           const event = parseEvent(raw);
           if (event) {
             received += 1;
+
+            if (
+              event.type === 'tool_completed' &&
+              event.data?.ok === true &&
+              CHANGING_TOOLS.has(String(event.data?.tool))
+            ) {
+              changedSomething = true;
+            }
+
             setTurns((previous) => {
               // The turn was appended before the request went out, so
               // there is always one to file under. Narrowed rather than
@@ -294,6 +323,18 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // than before, because the row does not exist until the turn lands.
       void refreshChats();
 
+      // A CHANGE MADE HERE MUST BE VISIBLE EVERYWHERE. The write already
+      // went through the same /api/v1 a manual action does -- what is
+      // stale is the server-rendered page AROUND this panel. The cart
+      // page fixes exactly this staleness for its own buttons with
+      // router.refresh(); this is the same fix for the same problem.
+      //
+      // Only when something actually changed, and only when it
+      // succeeded: a refresh re-renders every server component on the
+      // page, and doing it after "what did I order?" would make every
+      // question cost one for no change at all.
+      if (changedSomething) router.refresh();
+
       setStatus(received === 0 ? 'error' : 'idle');
     } catch {
       setStatus('error');
@@ -302,7 +343,29 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
     // conversationId is a dependency: without it the first message after a
     // resume would be sent with a stale null and strand the old chat.
-  }, [conversationId, refreshChats, turns.length]);
+  }, [conversationId, refreshChats, router, turns.length]);
+
+  /**
+   * Ask the last question again.
+   *
+   * A failed tool call leaves the customer looking at a red chip. The
+   * design's MUST PROVE is that a failure offers a way forward rather
+   * than a stalled spinner, and the simplest honest one is "ask again":
+   * the failure may have been transient, and nobody should have to
+   * retype a question to find out.
+   *
+   * A NEW turn, not a resumed one. Resuming would mean the agent
+   * re-entering a graph it has already finished, and the failed turn is
+   * already written down.
+   */
+  const retry = useCallback(() => {
+    if (inFlight.current) return;
+
+    const last = turns[turns.length - 1];
+    if (!last) return;
+
+    void send(last.utterance);
+  }, [send, turns]);
 
   /**
    * Answer a pending approval.
@@ -458,6 +521,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       turns,
       status,
       send,
+      retry,
       approve,
       answered,
     }),
@@ -473,6 +537,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       turns,
       status,
       send,
+      retry,
       approve,
       answered,
     ]

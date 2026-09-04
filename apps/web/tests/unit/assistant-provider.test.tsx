@@ -862,3 +862,74 @@ describe('naming a conversation', () => {
     expect(screen.getByTestId('text')).toHaveTextContent('You ordered ORD-1.');
   });
 });
+
+describe('a change the rest of the site can see', () => {
+  // THE MUST PROVE of M4 Task 6. The write already went through the same
+  // /api/v1 a manual action does; what is stale is the server-rendered
+  // page AROUND the panel -- exactly the staleness cart-view.tsx fixes
+  // for its own buttons with router.refresh().
+  const refresh = jest.fn();
+
+  beforeEach(() => {
+    refresh.mockReset();
+    jest
+      .spyOn(require('next/navigation'), 'useRouter')
+      .mockReturnValue({ refresh } as never);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  function turnUsing(tool: string, ok: boolean) {
+    return (
+      `event: assistant\ndata: {"v":1,"seq":0,"type":"tool_started","data":{"call_id":"c1","tool":"${tool}","arguments":{}}}\n\n` +
+      `event: assistant\ndata: {"v":1,"seq":1,"type":"tool_completed","data":{"call_id":"c1","tool":"${tool}","ok":${ok},"result":{}}}\n\n` +
+      'event: assistant\ndata: {"v":1,"seq":2,"type":"message","data":{"text":"Done."}}\n\n'
+    );
+  }
+
+  it('refreshes the page after the assistant changes the cart', async () => {
+    global.fetch = jest.fn().mockResolvedValue(streamOf(turnUsing('add_to_cart', true)));
+    renderProbe();
+    await ask();
+
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('refreshes after an order is cancelled', async () => {
+    global.fetch = jest.fn().mockResolvedValue(streamOf(turnUsing('cancel_order', true)));
+    renderProbe();
+    await ask();
+
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it('does NOT refresh after a read-only turn', async () => {
+    // A refresh re-renders every server component on the page. Doing it
+    // after "what did I order?" would make every question cost one for
+    // no change at all.
+    global.fetch = jest.fn().mockResolvedValue(streamOf(turnUsing('get_orders', true)));
+    renderProbe();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('does NOT refresh when the change failed', async () => {
+    // Nothing changed, so nothing is stale.
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(streamOf(turnUsing('add_to_cart', false)));
+    renderProbe();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+    expect(refresh).not.toHaveBeenCalled();
+  });
+});
