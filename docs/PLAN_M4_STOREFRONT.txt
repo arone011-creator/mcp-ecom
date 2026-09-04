@@ -580,9 +580,25 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
   2026-09-04 -- CHAT PHASE 2: STORAGE AND RESUME (plan
   docs/superpowers/plans/2026-09-03-chat-phase2-storage-and-resume.md)
 
-    A conversation now survives closing the panel, a refresh, signing out
-    and restarting the browser. Reopening the assistant shows the chat you
-    were last having.
+    A conversation now survives closing the panel, a refresh and signing
+    out. Reopening the assistant shows the chat you were last having.
+
+    VERIFIED LIVE 2026-09-04, signed in as the seeded demo customer:
+      * asked a question, got an answer;
+      * FULL PAGE RELOAD -- the question, the tool chip and the answer all
+        came back. This is the step that had never worked before;
+      * asked a follow-up. GET /api/assistant/conversations/latest then
+        reported ONE conversation (cmtmksgul0001k8vin2gfl90o) with two
+        turns in order, 100 and 38 events -- it joined rather than forking,
+        which is the part that depended on the x-conversation-id header
+        being adopted;
+      * signed out, signed back in: both turns still there;
+      * navigated to /products with the site's own link: the panel kept
+        the whole conversation. That was the case originally reported as
+        broken.
+    NOT verified: a genuine browser restart, which cannot be simulated from
+    a driven session. Signing out drops the session entirely and is the
+    stronger test, so this is a gap in evidence rather than in behaviour.
 
     WHAT CHANGED
       * Two tables, ONE migration: conversations and conversation_turns.
