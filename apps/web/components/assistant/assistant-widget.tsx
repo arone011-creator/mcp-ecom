@@ -10,7 +10,8 @@
 // lives in the provider above this component; that is what lets a
 // customer close the chat, keep shopping, and reopen it mid-thought.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Send, X } from 'lucide-react';
 
 import { AssistantText } from './assistant-text';
 import { useAssistant } from './assistant-provider';
@@ -22,6 +23,22 @@ export function AssistantWidget() {
   const { transcript, status, send } = useAssistant();
 
   const busy = status === 'streaming';
+
+  // WHERE THE VIEW SITS AFTER A QUESTION IS ASKED.
+  //
+  // The panel used to leave the scroll exactly where it was, so a new
+  // question and the answer streaming under it both arrived below the
+  // fold: the customer pressed send and watched an unchanged screen.
+  //
+  // Keyed on the NUMBER of turns, not on their content. Re-running this
+  // for every message_delta would drag the view back on every fragment
+  // and fight anyone who had scrolled up to re-read something.
+  const lastTurn = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open || transcript.length === 0) return;
+    lastTurn.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [open, transcript.length]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -56,9 +73,9 @@ export function AssistantWidget() {
           type="button"
           aria-label="Close the shopping assistant"
           onClick={() => setOpen(false)}
-          className="rounded px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
         >
-          Close
+          <X aria-hidden="true" className="h-4 w-4" />
         </button>
       </div>
 
@@ -76,8 +93,22 @@ export function AssistantWidget() {
           kind rather than by when, which reads correctly for exactly one
           exchange and wrongly for two.
         */}
-        {transcript.map((entry, turnIndex) => (
-          <div key={turnIndex} className="flex flex-col gap-2">
+        {transcript.map((entry, turnIndex) => {
+          const newest = turnIndex === transcript.length - 1;
+
+          return (
+          <div
+            key={turnIndex}
+            data-turn=""
+            ref={newest ? lastTurn : null}
+            // The last block reserves a container's worth of height, because
+            // a turn cannot scroll to the TOP of its container unless there
+            // is that much space beneath it. Only the last one: giving every
+            // block the same would turn the transcript into a slideshow.
+            className={`flex flex-col gap-2 ${
+              newest ? 'min-h-[calc(100%-1.5rem)]' : ''
+            }`}
+          >
             <p className="max-w-[85%] self-end rounded-2xl bg-slate-900 px-3 py-2 text-white">
               {entry.utterance}
             </p>
@@ -119,7 +150,8 @@ export function AssistantWidget() {
               );
             })}
           </div>
-        ))}
+          );
+        })}
 
         {status === 'error' ? (
           <p role="alert" className="text-rose-700">
@@ -144,10 +176,11 @@ export function AssistantWidget() {
         />
         <button
           type="submit"
+          aria-label="Send message"
           disabled={busy || !draft.trim()}
-          className="rounded bg-slate-900 px-3 py-1 text-sm text-white disabled:opacity-40"
+          className="rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-40"
         >
-          Send
+          <Send aria-hidden="true" className="h-4 w-4" />
         </button>
       </form>
     </div>

@@ -109,11 +109,17 @@ async function ask(text = 'what did I order?') {
     fireEvent.change(input, { target: { value: text } });
   });
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
   });
 }
 
+// jsdom implements no layout and therefore no scrollIntoView. Stubbed
+// rather than skipped: where the view sits after a question is asked is a
+// behaviour worth pinning down, even if only the call can be observed.
+Element.prototype.scrollIntoView = jest.fn();
+
 beforeEach(() => {
+  (Element.prototype.scrollIntoView as jest.Mock).mockClear();
   global.fetch = jest.fn().mockResolvedValue(streamOf(''));
 });
 
@@ -504,5 +510,82 @@ data: ${JSON.stringify({
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     // The input is usable again, so "try again" is actually possible.
     expect(screen.getByLabelText(/message the assistant/i)).not.toBeDisabled();
+  });
+});
+
+describe('icons instead of words, and where the view sits', () => {
+  it('labels the icon buttons for a screen reader', async () => {
+    // The words went away; the accessible names must not. A button whose
+    // only content is an svg is unusable without one.
+    renderWidget();
+    await open();
+
+    expect(
+      screen.getByRole('button', { name: 'Send message' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Close the shopping assistant' })
+    ).toBeInTheDocument();
+
+    // And they really are icons now, not words.
+    expect(screen.queryByText('Send')).toBeNull();
+    expect(screen.queryByText('Close')).toBeNull();
+  });
+
+  it('brings the newest question to the top of the panel', async () => {
+    // THE BUG. Without this the answer streams in below the fold and the
+    // customer watches an unchanged screen while it arrives.
+    renderWidget();
+    await open();
+    await ask('what did I order?');
+
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
+        expect.objectContaining({ block: 'start' })
+      )
+    );
+  });
+
+  it('does not yank the view on every fragment as the answer streams', async () => {
+    // Scrolling per delta would fight a customer who scrolled up to read
+    // something. The view is placed once, when the question is asked.
+    const stream = controlledStream();
+    global.fetch = jest.fn().mockResolvedValue(stream.response);
+
+    renderWidget();
+    await open();
+    await ask('what did I order?');
+
+    const afterAsking = (Element.prototype.scrollIntoView as jest.Mock).mock
+      .calls.length;
+
+    await act(async () => {
+      stream.push(event(0, 'message_delta', { text: 'You ' }));
+      stream.push(event(1, 'message_delta', { text: 'ordered ' }));
+      stream.push(event(2, 'message_delta', { text: 'ORD-1.' }));
+    });
+
+    expect(
+      (Element.prototype.scrollIntoView as jest.Mock).mock.calls
+    ).toHaveLength(afterAsking);
+
+    await act(async () => {
+      stream.end();
+    });
+  });
+
+  it('leaves room under the last turn so it can actually reach the top', async () => {
+    // A turn cannot scroll to the top of its container unless there is a
+    // container's worth of space beneath it. The last block reserves it;
+    // the ones above must not, or the transcript becomes a slideshow.
+    const { container } = renderWidget();
+    await open();
+    await ask('first question');
+    await ask('second question');
+
+    const blocks = container.querySelectorAll('[data-turn]');
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]!.className).not.toMatch(/min-h-/);
+    expect(blocks[1]!.className).toMatch(/min-h-/);
   });
 });
