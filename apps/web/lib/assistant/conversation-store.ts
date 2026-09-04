@@ -217,3 +217,43 @@ export async function deleteConversation(
 
   return count > 0;
 }
+
+/** One turn's agent-side record. Opaque here; only the agent reads inside it. */
+export interface StoredAgentContext {
+  agentContext: unknown;
+}
+
+/**
+ * Every turn's agent context for one chat, oldest first.
+ *
+ * Read on EVERY turn of a continuing conversation, which is why it selects
+ * `agentContext` and nothing else: the utterances and display events are
+ * loaded elsewhere, for the panel, and pulling a whole chat into memory to
+ * send one request would make a long conversation quadratically expensive
+ * to continue.
+ *
+ * Filtered by `userId` like everything else in this module, even though
+ * the bridge has already called `ownedConversation`. The rule here is that
+ * ownership lives in the query, with no path that can forget it -- a
+ * function that trusted its caller would be the exception that makes the
+ * rule unenforceable.
+ *
+ * An empty list for a chat that is not this customer's, rather than a
+ * throw: the caller is about to answer a question, and "no memory" is a
+ * better failure than "no answer".
+ */
+export async function loadAgentContext(
+  userId: string,
+  conversationId: string
+): Promise<StoredAgentContext[]> {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, userId },
+    select: {
+      turns: { orderBy: { seq: 'asc' }, select: { agentContext: true } },
+    },
+  });
+
+  if (!conversation) return [];
+
+  return conversation.turns.map((turn) => ({ agentContext: turn.agentContext }));
+}

@@ -25,6 +25,7 @@ import {
   appendTurn,
   deleteConversation,
   listConversations,
+  loadAgentContext,
   loadConversation,
   loadLatestConversation,
   ownedConversation,
@@ -318,5 +319,63 @@ describe('deleteConversation', () => {
     mockPrisma.conversation.deleteMany.mockResolvedValue({ count: 0 });
 
     expect(await deleteConversation('user_b', 'conv_1')).toBe(false);
+  });
+});
+
+describe('loadAgentContext', () => {
+  it('reads every turn of a chat the customer owns, oldest first', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue({
+      turns: [
+        { agentContext: [{ role: 'user', content: 'one' }] },
+        { agentContext: [{ role: 'user', content: 'two' }] },
+      ],
+    });
+
+    const context = await loadAgentContext('user_a', 'conv_1');
+
+    expect(context).toEqual([
+      { agentContext: [{ role: 'user', content: 'one' }] },
+      { agentContext: [{ role: 'user', content: 'two' }] },
+    ]);
+    expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'conv_1', userId: 'user_a' },
+      })
+    );
+  });
+
+  it('orders the turns by seq, not by whatever the database returns', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue({ turns: [] });
+
+    await loadAgentContext('user_a', 'conv_1');
+
+    const [args] = mockPrisma.conversation.findFirst.mock.calls[0];
+    expect(args.select.turns.orderBy).toEqual({ seq: 'asc' });
+  });
+
+  it('reads nothing but the agent context', async () => {
+    // The customer's utterances and the display events are already loaded
+    // elsewhere, for the panel. Selecting them here would pull a whole
+    // chat into memory on every single turn.
+    mockPrisma.conversation.findFirst.mockResolvedValue({ turns: [] });
+
+    await loadAgentContext('user_a', 'conv_1');
+
+    const [args] = mockPrisma.conversation.findFirst.mock.calls[0];
+    expect(args.select.turns.select).toEqual({ agentContext: true });
+  });
+
+  it('finds nothing for another customer, rather than refusing loudly', async () => {
+    // Ownership is inside the query, like every other function here. A
+    // stranger's id simply finds nothing.
+    mockPrisma.conversation.findFirst.mockResolvedValue(null);
+
+    expect(await loadAgentContext('user_b', 'conv_1')).toEqual([]);
+  });
+
+  it('reads an empty record for a chat with no turns yet', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue({ turns: [] });
+
+    expect(await loadAgentContext('user_a', 'conv_1')).toEqual([]);
   });
 });
