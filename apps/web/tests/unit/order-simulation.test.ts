@@ -7,7 +7,9 @@ import {
   LADDER,
   STEP_MS,
   dueStatus,
+  formatCountdown,
   isTerminated,
+  msUntilNextStep,
 } from '@/lib/orders/simulation';
 
 const START = new Date('2026-09-05T12:00:00.000Z');
@@ -128,5 +130,89 @@ describe('isTerminated', () => {
     // DELIVERED is the end of the ladder, so the tracker should show it
     // complete rather than replacing it with a notice.
     expect(isTerminated('DELIVERED')).toBe(false);
+  });
+});
+
+describe('msUntilNextStep', () => {
+  // The countdown the demo panel shows. Same four arguments as dueStatus
+  // and the same rules, answering "how long" instead of "what next" -- so
+  // the number on screen and the status that eventually lands are read off
+  // the same clock rather than two that can drift apart.
+
+  it('counts down to the next step', () => {
+    expect(msUntilNextStep('PENDING', START, null, at(0))).toBe(60_000);
+    expect(msUntilNextStep('PENDING', START, null, at(0.5))).toBe(30_000);
+    expect(msUntilNextStep('PENDING', START, null, at(0.75))).toBe(15_000);
+  });
+
+  it('counts to the step after the one already reached', () => {
+    // An order that has advanced to PROCESSING is a minute into its clock,
+    // so it is a further minute from SHIPPED -- not two minutes.
+    expect(msUntilNextStep('PROCESSING', START, null, at(1))).toBe(60_000);
+    expect(msUntilNextStep('SHIPPED', START, null, at(2.5))).toBe(30_000);
+  });
+
+  it('reaches zero, and never goes below it', () => {
+    // Zero means "due now". The status is written on the next read, so
+    // there is a moment between owing a step and having taken it, and a
+    // countdown showing minus four seconds would be describing that gap
+    // as if something were wrong.
+    expect(msUntilNextStep('PENDING', START, null, at(1))).toBe(0);
+    expect(msUntilNextStep('PENDING', START, null, at(10))).toBe(0);
+  });
+
+  it('freezes while paused', () => {
+    // THE MUST PROVE. Paused with fifteen seconds to go, read an hour
+    // later: still fifteen seconds to go. A countdown that kept running
+    // while the order could not move would be lying about both.
+    const pausedAt = at(0.75);
+
+    expect(msUntilNextStep('PENDING', START, pausedAt, at(60))).toBe(15_000);
+  });
+
+  it('has nothing to count for an order with no clock', () => {
+    expect(msUntilNextStep('PENDING', null, null, at(999))).toBeNull();
+  });
+
+  it('has nothing to count at the end of the ladder', () => {
+    expect(msUntilNextStep('DELIVERED', START, null, at(0))).toBeNull();
+  });
+
+  it('has nothing to count for an order that ended', () => {
+    expect(msUntilNextStep('CANCELLED', START, null, at(0))).toBeNull();
+    expect(msUntilNextStep('REFUNDED', START, null, at(0))).toBeNull();
+  });
+
+  it('agrees with dueStatus about whether a step is owed', () => {
+    // The two functions must not disagree: whenever the countdown says
+    // zero, dueStatus must have something to write, and whenever it says
+    // more than zero, dueStatus must have nothing.
+    for (const minutes of [0, 0.5, 0.99, 1, 1.5, 2, 2.99, 3, 10]) {
+      const remaining = msUntilNextStep('PENDING', START, null, at(minutes));
+      const due = dueStatus('PENDING', START, null, at(minutes));
+
+      expect(remaining === 0).toBe(due !== null);
+    }
+  });
+});
+
+describe('formatCountdown', () => {
+  it('reads as minutes and padded seconds', () => {
+    expect(formatCountdown(60_000)).toBe('1:00');
+    expect(formatCountdown(45_000)).toBe('0:45');
+    expect(formatCountdown(9_000)).toBe('0:09');
+    expect(formatCountdown(0)).toBe('0:00');
+  });
+
+  it('rounds up, so it shows 0:00 only when the step is actually due', () => {
+    // Rounding down would put "0:00" on screen for a whole second while
+    // the order was still waiting, which reads as stuck.
+    expect(formatCountdown(1)).toBe('0:01');
+    expect(formatCountdown(999)).toBe('0:01');
+    expect(formatCountdown(59_001)).toBe('1:00');
+  });
+
+  it('never shows a negative time', () => {
+    expect(formatCountdown(-5_000)).toBe('0:00');
   });
 });

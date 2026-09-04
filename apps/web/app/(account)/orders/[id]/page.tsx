@@ -194,8 +194,8 @@ export default async function OrderDetailPage({
           <OrderSimulationPanel
             orderId={order.id}
             status={order.status}
-            hasClock={order.simulationStartedAt !== null}
-            paused={order.simulationPausedAt !== null}
+            startedAt={order.simulationStartedAt?.toISOString() ?? null}
+            pausedAt={order.simulationPausedAt?.toISOString() ?? null}
           />
 
           {/* Order Items */}

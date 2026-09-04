@@ -88,3 +88,50 @@ export function dueStatus(
 
   return reached > current ? LADDER[reached]! : null;
 }
+
+/**
+ * How long until this order's next step, or null if it has none coming.
+ *
+ * The countdown the demo panel shows. It answers "how long" where
+ * dueStatus answers "what next", and it deliberately reads the same four
+ * arguments by the same rules -- so the number on screen and the status
+ * that eventually lands come off one clock rather than two that can drift.
+ * A test pins them together: zero here must mean dueStatus has something
+ * to write, and vice versa.
+ *
+ * FLOORED AT ZERO. A step falls due the instant this reaches zero, but the
+ * status is only written when something next reads the order, so there is
+ * a real gap between owing a step and having taken it. Counting on into
+ * negative numbers would describe that ordinary gap as if it were a fault.
+ */
+export function msUntilNextStep(
+  status: OrderStatus,
+  startedAt: Date | null,
+  pausedAt: Date | null,
+  now: Date
+): number | null {
+  if (!startedAt) return null;
+
+  const current = LADDER.indexOf(status);
+  if (current === -1 || current === LADDER.length - 1) return null;
+
+  // Paused time does not count, exactly as in dueStatus: the clock stopped
+  // when the pause began, so the countdown stops with it.
+  const until = pausedAt ?? now;
+  const elapsed = until.getTime() - startedAt.getTime();
+
+  return Math.max(0, (current + 1) * STEP_MS - elapsed);
+}
+
+/**
+ * Milliseconds as `M:SS`.
+ *
+ * ROUNDED UP, so "0:00" appears only when the step is genuinely due.
+ * Rounding down would leave 0:00 on screen for the last whole second of
+ * every minute, which reads as stuck rather than as nearly there.
+ */
+export function formatCountdown(ms: number): string {
+  const seconds = Math.ceil(Math.max(0, ms) / 1000);
+
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
