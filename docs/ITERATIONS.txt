@@ -1,6 +1,7 @@
 ================================================================================
 ITERATIONS - mcp-ecom
-How this project was actually built. As of 29 August 2026, M3 complete.
+How this project was actually built. As of 4 September 2026, M4 in
+progress - Tasks 1-6 complete.
 ================================================================================
 
 The technical snapshot says what this system IS. This document says how it got
@@ -32,7 +33,8 @@ CONTENTS
      8. What it cost, in numbers
      9. How to replicate this project from scratch
     10. What we would do differently
-    11. Where it stands now
+    11. What M4 taught - the agent and the assistant panel
+    12. Where it stands now
 
 
 ================================================================================
@@ -511,16 +513,87 @@ STEP 7 - ADD THE AI LAYER, LAST, AND SEPARATELY
 
 
 ================================================================================
-11. WHERE IT STANDS NOW
+11. WHAT M4 TAUGHT - THE AGENT AND THE ASSISTANT PANEL
 ================================================================================
 
-    Storefront                                    live, 461 tests passing
+M4 added an agent, a streaming chat panel, human approval for irreversible
+actions, and persistent named conversations with memory. Six lessons, all of
+which cost something to learn.
+
+A GREEN SUITE STILL CANNOT SEE THE BROWSER. Two scroll bugs in the panel were
+invisible to jsdom because jsdom has no layout engine: scrollIntoView with
+smooth behaviour moved the container not at all, and a percentage height
+resolved against the content box, so padding got subtracted twice. "We asked
+for smooth" was the most any test could assert. Both were found by measuring
+scrollTop in a real Chrome. The fix was to stop delegating -- the panel now
+animates its own scrolling, which makes the motion testable frame by frame.
+
+A FIXTURE WRITTEN FROM A MODEL DEFINITION TESTS THE DEFINITION, NOT THE WIRE.
+The product cards in Task 6 rendered NOTHING against the real agent while
+every unit test was green, because search_products answers an envelope
+({products, pagination}) and the fixture had been invented as a bare list.
+The get_orders fixture, which had been copied off the wire, worked first time.
+Three shape guesses were wrong; the one observed shape was right. That is the
+whole lesson.
+
+A MUTATION THAT CHANGES NO FILE IS NOT A SURVIVING MUTATION. Twice, a sed
+pattern failed to match, the suite stayed green, and the result said only that
+the code was unchanged. "Updated 0 paths from the index" on the revert is the
+tell. Worse: twice a `git checkout` run to revert a mutation also reverted an
+UNCOMMITTED implementation, so the next mutation ran against code where the
+feature was simply absent. Commit before mutating -- without that the results
+are unreadable.
+
+THE FAILURE PATHS ARE THE ONES THAT NEVER GET EXERCISED. A turn that died
+mid-stream used to close cleanly with nothing in it, which is indistinguishable
+from an assistant that had nothing to say -- and that is how a broken deploy
+reached a customer as a blank panel. The event contract had carried an `error`
+event since the first commit and nothing had ever emitted one. Conversely, the
+recovery buttons added in Task 6 could NOT be verified live: three attempts to
+provoke a real tool failure all produced successes, because the agent is
+better behaved than the test needed. It is recorded as untested-live rather
+than claimed.
+
+THE SECOND IMPLEMENTATION IS THE BUG. The frozen event contract exists in two
+languages with one golden fixture between them, and replay() is the single
+reducer both sides render from. Every time something in M4 wanted to derive
+the conversation a second way -- accumulating messages as they arrived, mapping
+events back into model messages, re-wording a storefront error -- that would
+have been a second implementation of a mapping that already had one. The
+storefront stores the agent's transcript opaquely and never parses it, for
+exactly this reason.
+
+A DEPLOY IS NOT PROVEN BY A 200. The agent's /health reports the commit sha it
+was built from, because twice a deploy was verified against the container it
+was replacing. Every M4 verification checks the sha, and the storefront's
+prisma migrate deploy now runs as a Railway pre-deploy command -- which is how
+it was discovered that migrations had NEVER been applied automatically on this
+project.
+
+    IN PLAIN TERMS
+    Six things this stage taught. The theme: the tests kept passing while the
+    real thing was broken. Fake browsers do not scroll, invented example data
+    does not match what the real system sends, and a check that silently
+    changed nothing looks exactly like a check that passed. Almost every real
+    bug here was found by using the deployed site and measuring what happened,
+    not by running the test suite.
+
+
+================================================================================
+12. WHERE IT STANDS NOW
+================================================================================
+
+    Storefront                                    live, 817 tests passing
     Versioned API                                 live, 9 endpoints
     MCP server                                    live, 9 tools
-    Agent                                         not built - Phase 2
+    Agent                                         live, 313 tests passing
+    Assistant panel                               live: streaming chat,
+                                                  approvals, persistent named
+                                                  history, memory, cards
     Scorecard                                     m3-mcp, no regressions
 
-Known open items, each recorded in docs/mcp/open-questions.md with an owner:
+Known open items, each recorded in docs/mcp/open-questions.md with an owner,
+plus those M4 added (see docs/PLAN_M4_STOREFRONT.txt):
 
     * Prompt injection through product reviews is unmitigated, and must be
       solved before the AI layer is used for real.
@@ -530,12 +603,21 @@ Known open items, each recorded in docs/mcp/open-questions.md with an owner:
     * Rate limiting is per-instance, so it multiplies if the service scales.
     * Railway's private network is incompatible with the HTTPS-upgrade
       middleware.
+    * A long assistant conversation drops its oldest turns abruptly once it
+      passes the replay token budget. Phase 6 summarisation is the fix.
+    * The agent service is publicly reachable, guarded only by a service key.
+    * All three services rebuild on any commit; watchPatterns are unset.
+    * M4 Tasks 6b, 7 and 8 are not built, and "Choose another" from Task 6's
+      recovery actions is deliberately deferred to 6b, where the alternatives
+      can come from a real tool result rather than a guess.
 
     IN PLAIN TERMS
-    The shop works, it is online, and an AI can use it through a controlled
-    set of nine actions. The AI itself is the next stage. Five known problems
-    are written down rather than forgotten, and the most serious is that
-    product reviews - written by the public - are read by the AI, which is a
-    door nobody has closed yet.
+    The shop works, it is online, and it now has a working AI assistant: it
+    can search, look things up, change the cart, and cancel an order after a
+    human clicks to confirm. Conversations are saved, named, listed and
+    reopenable, and the assistant remembers what was said earlier in the chat
+    it is in. Known problems are written down rather than forgotten, and the
+    most serious is unchanged: product reviews are written by the public and
+    read by the AI, which is a door nobody has closed yet.
 
 ================================================================================

@@ -1,6 +1,6 @@
 ================================================================================
 TECHNICAL SNAPSHOT - mcp-ecom
-As of 29 August 2026, milestone M3 complete.
+As of 4 September 2026, milestone M4 in progress - Tasks 1-6 complete.
 ================================================================================
 
 A complete picture of what this system is, what it is built from, and how the
@@ -37,17 +37,24 @@ CONTENTS
 1. WHAT EXISTS TODAY
 ================================================================================
 
-Two separate programs, in two separate repositories, deployed side by side.
+Two repositories, THREE deployed services. The other repository ships two
+processes from one codebase, deliberately: only the agent needs the model key,
+and approval tokens are minted in the MCP server and never by the agent. Across
+two processes that separation is structural rather than a rule a test enforces.
 
                       THIS REPOSITORY              THE OTHER REPOSITORY
     ----------------  ---------------------------  ---------------------------
     Name              mcp-ecom                     mcp-ecom-agent-layer
-    What it is        The shop: web pages,         The AI-access layer
-                      business rules, database
+    What it is        The shop: web pages,         The AI-access layer, and
+                      business rules, database,    the agent that drives it
+                      and the assistant panel
     Language          TypeScript (Next.js)         Python
+    Services          web                          mcp, agent
     Live at           web-production-bb55d         mcp-production-e344
                         .up.railway.app              .up.railway.app
-    Tests             461                          108
+                                                   agent-production-79c8
+                                                     .up.railway.app
+    Tests             817                          313
 
     Other repository:
     https://github.com/arone011-creator/mcp-ecom-agent-layer
@@ -67,10 +74,22 @@ layer never touches the database and never re-implements a rule.
 ================================================================================
 
     Shopper in a browser                    AI client
-            |                                   |
-            | HTTPS                             | MCP over HTTP
-            |                                   |
-            |                                   v
+            |         |                         |
+            | HTTPS   | the assistant panel,    | MCP over HTTP
+            |         | via POST /api/assistant |
+            |         | -- the BRIDGE: holds    |
+            |         | the cookie, mints a     |
+            |         | short-lived bearer      |
+            |         | server-side, forwards   |
+            |         | only `assistant` frames |
+            |         v                         |
+            |  +----------------------+         |
+            |  |   agent service      |         |
+            |  |   LangGraph + OpenAI |         |
+            |  +----------------------+         |
+            |         |                         |
+            |         | MCP, one session a turn |
+            |         v                         v
             |                        +----------------------+
             |                        |   mcp service        |
             |                        |   Python MCP server  |
@@ -90,7 +109,7 @@ layer never touches the database and never re-implements a rule.
                  |  Supabase, Singapore |
                  +----------------------+
 
-    Both services run in one Railway project: mcp_ecom
+    All three services run in one Railway project: mcp_ecom
 
 Everything a shopper does and everything an AI does converges on the same code
 path inside `web`. There is no second implementation of "can this order be
@@ -138,7 +157,7 @@ deliberately hidden from the API.
 4. DATA MODEL
 ================================================================================
 
-Fifteen tables. The ones that carry the business:
+Seventeen tables. The ones that carry the business:
 
     TABLE                        HOLDS
     ---------------------------  ---------------------------------------------
@@ -154,6 +173,11 @@ Fifteen tables. The ones that carry the business:
     IdempotencyKey               Makes retried writes safe (added in M3)
     Account / Session /          NextAuth's own tables
       VerificationToken
+    Conversation                 One assistant chat, with its model-written
+                                 title (added in M4)
+    ConversationTurn             One exchange: the utterance, the display
+                                 `events`, and an opaque `agentContext` the
+                                 storefront stores but never parses
 
 Three enums define the state machines:
 
@@ -222,6 +246,8 @@ signs out every user everywhere. Short lifetimes are the only real mitigation.
 ================================================================================
 
 Nine endpoints. This is the entire surface the AI layer is allowed to use.
+The assistant panel's own routes live under /api/assistant and are described
+in section 7 -- they are for a signed-in browser, not for the AI layer.
 
     METHOD            PATH                                AUTH         PURPOSE
     ----------------  ----------------------------------  -----------  --------
@@ -298,10 +324,46 @@ needing interactivity ship JavaScript to the browser. middleware.ts handles
 route protection, security headers including a Content Security Policy, and an
 HTTP-to-HTTPS upgrade.
 
+THE ASSISTANT PANEL (M4)
+
+A chat panel on every page, and the routes behind it. Not part of /api/v1:
+that surface is for the AI layer, and these are for a signed-in browser.
+
+    POST    /api/assistant                          the bridge; SSE out
+    POST    /api/assistant/approve                  a human's decision
+    GET     /api/assistant/conversations            the history list
+    GET     /api/assistant/conversations/latest     what to resume on load
+    GET,DEL /api/assistant/conversations/{id}       open one, delete one
+    POST    /api/assistant/conversations/{id}/title name it, once
+
+FOUR RULES THE PANEL IS BUILT ON, each of which has a test:
+
+  1. THE BROWSER NEVER HOLDS A TOKEN. The bridge holds the session cookie,
+     mints a fifteen-minute bearer server-side, spends it on one request and
+     throws it away.
+
+  2. FORWARDING IS BY EXCLUSION. Only `assistant` frames reach the browser.
+     `control` frames -- which carry the agent's MCP session id and, since
+     Phase 5, the stored model transcript -- are consumed and dropped. A new
+     agent-side channel therefore cannot leak to a browser by default.
+
+  3. NOTHING IS RENDERED FROM MODEL PROSE WHERE IT MATTERS. The approval
+     card, the tool chips, the step list and the product/order/cart cards are
+     all built from structured tool results. Text beside an action can be
+     written by whoever wrote the product description.
+
+  4. OWNERSHIP LIVES IN THE QUERY. Every conversation read filters by userId
+     inside the SQL rather than checking afterwards, and a stranger's id gets
+     a 404 -- never a 403, which would confirm the id is real.
+
     IN PLAIN TERMS
-    The pages a customer actually sees, plus a small admin area for whoever
-    runs the shop. Most pages are assembled on the server and sent as
-    finished HTML, which makes them fast and works without JavaScript.
+    The pages a customer actually sees, a small admin area for whoever runs
+    the shop, and a chat panel that can act on the customer's behalf. Most
+    pages are assembled on the server and sent as finished HTML, which makes
+    them fast and works without JavaScript. The chat panel is deliberately
+    kept on a short leash: the browser never holds a key, it is only ever
+    shown things the shop's own systems said, and it can only ever see the
+    customer's own data.
 
 
 ================================================================================
@@ -359,8 +421,14 @@ TWO TRAPS ALREADY PAID FOR:
 9. TESTING AND THE SCORECARD
 ================================================================================
 
-461 tests across four suites: 17 unit files, 15 integration files, 1
+817 tests across four suites: unit (jsdom), integration (node), 1
 accessibility suite (jest-axe), 3 Cypress end-to-end specs.
+
+JSDOM HAS NO LAYOUT ENGINE, and M4 proved what that costs. Two scroll bugs in
+the assistant panel lived entirely in what a real browser did with a call the
+tests could only assert had been made; both were found by measuring scrollTop
+in Chrome, not by a red test. The panel now animates its own scrolling partly
+so that the motion itself is testable frame by frame.
 
 THE INTEGRATION TESTS MOCK THE DATABASE ENTIRELY. They test routing,
 permissions and response shapes - not SQL. Real verification has always been
@@ -387,6 +455,7 @@ accepted, with a reason.
     m1-singapore                    245              67.48%
     m2-api                          405              73.36%
     m3-mcp                          461              75.09%
+    (M4 in progress)                817                   -
 
 Coverage records absolute covered/total counts alongside percentages, because a
 percentage alone cannot tell "we covered less" apart from "we started measuring
@@ -479,6 +548,22 @@ discovers it the hard way.
 
   * 83 NPM ADVISORIES, 4 CRITICAL, inherited from the upstream project.
 
+  * AN ASSISTANT CONVERSATION FORGETS ITS OLDEST TURNS ABRUPTLY once it
+    exceeds the replay token budget (6000 by estimate, overridable with
+    ASSISTANT_HISTORY_TOKEN_BUDGET). Nothing is put in their place; Phase 6
+    summarisation is the fix. The budget is a character-count estimate, not
+    a tokeniser -- deliberately, and set far below anything the model would
+    refuse.
+
+  * SINGLE REPLICA ONLY, for the agent. Paused turns, the spent-approval
+    nonce set and LangGraph's checkpointer are all in process memory.
+
+  * THE AGENT SERVICE IS PUBLICLY REACHABLE, guarded only by
+    AGENT_SERVICE_KEY. It should be private-network-only.
+
+  * ALL THREE SERVICES REBUILD ON ANY COMMIT. Railway watchPatterns are
+    unset, so a docs change redeploys the agent.
+
   * .env.example IS STALE - it advertises Stripe variables that nothing reads.
 
     IN PLAIN TERMS
@@ -521,7 +606,12 @@ Useful commands:
     docs/mcp/tool-surface.md      The nine AI capabilities and risk tiers
     docs/mcp/open-questions.md    Every known risk, each assigned an owner
     docs/DOCS_INDEX.md            Everything else
-    docs/superpowers/plans/       The task-level plans, kept as a record
+    docs/PLAN_M4_STOREFRONT.txt   M4: the assistant panel, task by task,
+                                  with what was verified live and what was not
+    docs/superpowers/plans/       The task-level plans, kept as a record.
+                                  Start with 2026-09-03-chat-persistence-
+                                  roadmap.md, which records the decisions the
+                                  six chat phases are built on
 
     IN PLAIN TERMS
     Where to look for more detail on any part of this.
