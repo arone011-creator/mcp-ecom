@@ -250,6 +250,17 @@ model Order {
   shippedAt      DateTime?
   deliveredAt    DateTime?
   cancelledAt    DateTime?
+
+  /// When this order's simulated lifecycle started, or NULL if it has none
+  /// and never will. Every order that existed before this feature shipped
+  /// keeps NULL, which is what makes "existing orders never progress" a
+  /// fact about the data rather than a rule somebody has to remember.
+  simulationStartedAt DateTime?
+  /// When the simulation was paused, or NULL if it is running. Resuming
+  /// pushes simulationStartedAt forward by the pause duration rather than
+  /// accumulating a debt in a third column -- one source of truth for
+  /// elapsed time instead of two that can disagree.
+  simulationPausedAt  DateTime?
   
   userId    String?
   createdAt DateTime @default(now())

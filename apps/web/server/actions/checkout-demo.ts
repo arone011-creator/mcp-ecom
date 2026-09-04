@@ -72,6 +72,11 @@ export async function placeDemoOrder(
         data: {
           orderNumber: `ORD-${Date.now()}`,
           status: 'PENDING',
+          // THE ENTIRE OPT-IN. An order created from now on has a
+          // clock; every order that already exists does not, and never
+          // will -- which is what keeps them from lurching to DELIVERED
+          // the first time anything reads them.
+          simulationStartedAt: new Date(),
           subtotal,
           tax,
           shipping: FLAT_SHIPPING,
