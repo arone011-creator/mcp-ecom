@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { ArrowLeft, Package, Truck, CheckCircle, Clock } from 'lucide-react';
 import { authOptions } from '@/lib/auth';
 import { getOrderById } from '@/server/queries/orders';
+import { OrderSimulationPanel } from '@/components/orders/order-simulation-panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -77,6 +78,13 @@ export default async function OrderDetailPage({
     notFound();
   }
 
+  // A cancelled order used to render identically to a pending one --
+  // first dot green, three grey -- because CANCELLED appears in no
+  // `completed` list below. That told the customer their cancelled order
+  // was on its way.
+  const terminated =
+    order.status === 'CANCELLED' || order.status === 'REFUNDED';
+
   const statusSteps = [
     { key: 'PENDING', label: 'Order Placed', completed: true },
     {
@@ -134,6 +142,13 @@ export default async function OrderDetailPage({
               <CardTitle>Order Status</CardTitle>
             </CardHeader>
             <CardContent>
+              {terminated ? (
+                <p className="text-sm font-medium text-rose-700">
+                  {order.status === 'CANCELLED'
+                    ? 'This order was cancelled and is not on its way.'
+                    : 'This order was refunded.'}
+                </p>
+              ) : (
               <div className="flex items-center justify-between">
                 {statusSteps.map((step, index) => (
                   <div key={step.key} className="flex items-center">
@@ -165,6 +180,7 @@ export default async function OrderDetailPage({
                   </div>
                 ))}
               </div>
+              )}
 
               {order.trackingNumber && (
                 <div className="mt-6 rounded-lg bg-blue-50 p-4">
@@ -174,6 +190,13 @@ export default async function OrderDetailPage({
               )}
             </CardContent>
           </Card>
+
+          <OrderSimulationPanel
+            orderId={order.id}
+            status={order.status}
+            hasClock={order.simulationStartedAt !== null}
+            paused={order.simulationPausedAt !== null}
+          />
 
           {/* Order Items */}
           <Card>
