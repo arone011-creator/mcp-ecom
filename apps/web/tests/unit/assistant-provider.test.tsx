@@ -765,3 +765,100 @@ describe('managing several chats', () => {
     );
   });
 });
+
+describe('naming a conversation', () => {
+  /** A fetch that streams turns from the bridge and answers everything else. */
+  function dispatching(wire = ONE_TURN, conversationId: string | null = 'conv_1') {
+    return jest.fn().mockImplementation(async (url: string) => {
+      if (String(url) === '/api/assistant') return streamOf(wire, 200, conversationId);
+      // The list refresh, the resume-on-mount, and the title POST.
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ data: { conversations: [], conversation: null } }),
+      } as unknown as Response;
+    });
+  }
+
+  function titleCalls(): string[] {
+    return (global.fetch as jest.Mock).mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.endsWith('/title'));
+  }
+
+  it('asks for a name after the first turn', async () => {
+    // Once, after turn one. The row exists by now -- the bridge created
+    // it -- and the panel knows its id from the response header.
+    global.fetch = dispatching();
+    renderProbe();
+    await ask();
+
+    await waitFor(() => expect(titleCalls()).toHaveLength(1));
+    expect(titleCalls()[0]).toBe('/api/assistant/conversations/conv_1/title');
+  });
+
+  it('posts it, rather than reading it', async () => {
+    global.fetch = dispatching();
+    renderProbe();
+    await ask();
+
+    await waitFor(() => expect(titleCalls()).toHaveLength(1));
+    const call = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+      String(url).endsWith('/title')
+    );
+    expect(call![1].method).toBe('POST');
+    // No body. The route reads the exchange out of the database, so the
+    // browser cannot choose the text the model is shown.
+    expect(call![1].body).toBeUndefined();
+  });
+
+  it('does not ask again on later turns', async () => {
+    // The route is idempotent anyway, so this is about not spending a
+    // request per message for the life of a conversation.
+    global.fetch = dispatching();
+    renderProbe();
+    await ask();
+    await waitFor(() => expect(titleCalls()).toHaveLength(1));
+    await ask();
+
+    await waitFor(() =>
+      expect(bridgeCalls()).toHaveLength(2)
+    );
+    expect(titleCalls()).toHaveLength(1);
+  });
+
+  it('does not ask when the turn produced nothing', async () => {
+    // A turn that died has no answer to name, and the row may not even
+    // have been written.
+    global.fetch = dispatching('');
+    renderProbe();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('error')
+    );
+    expect(titleCalls()).toHaveLength(0);
+  });
+
+  it('leaves the chat working when naming fails', async () => {
+    // THE MUST PROVE, on this side: the panel must not care.
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/title')) throw new Error('agent is down');
+      if (String(url) === '/api/assistant') return streamOf(ONE_TURN, 200, 'conv_1');
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ data: { conversations: [], conversation: null } }),
+      } as unknown as Response;
+    });
+    renderProbe();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+    expect(screen.getByTestId('text')).toHaveTextContent('You ordered ORD-1.');
+  });
+});

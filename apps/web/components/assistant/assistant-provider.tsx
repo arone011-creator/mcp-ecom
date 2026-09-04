@@ -183,6 +183,14 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     const asked = utterance.trim();
     if (!asked || inFlight.current) return;
 
+    // Captured BEFORE anything is sent. By the time the stream ends this
+    // turn is already in `turns`, so asking then would always say no.
+    const wasFirstTurn = turns.length === 0;
+    // The chat this turn belongs to, held in a local rather than read
+    // back off state: setConversationId below has not settled by the time
+    // the naming request goes out.
+    let turnConversationId = conversationId;
+
     inFlight.current = true;
     setStatus('streaming');
     setTurns((previous) => [...previous, { utterance: asked, events: [] }]);
@@ -199,7 +207,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // The bridge creates the conversation on the first message and names
       // it here. Without adopting it, every message would start a new one.
       const named = response.headers.get('x-conversation-id');
-      if (named) setConversationId(named);
+      if (named) {
+        setConversationId(named);
+        turnConversationId = named;
+      }
 
       if (!response.ok || !response.body) {
         setStatus('error');
@@ -255,6 +266,29 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // customer looking at their own question and no reply, with nothing
       // to act on -- which is exactly what a broken agent deploy looked
       // like from the outside.
+      // A NAME, ONCE, AFTER THE FIRST TURN. Asked for from here rather
+      // than from the bridge because the bridge is holding the customer's
+      // stream open, and a model call for a cosmetic string does not
+      // belong on that path.
+      //
+      // The outcome is ignored on purpose: the route is idempotent, and a
+      // chat that fails to be named keeps the customer's own first
+      // message. Awaited only so the list refresh below sees the new
+      // title on its first try rather than the next one.
+      if (turnConversationId && wasFirstTurn && received > 0) {
+        try {
+          await fetch(
+            `/api/assistant/conversations/${encodeURIComponent(
+              turnConversationId
+            )}/title`,
+            { method: 'POST' }
+          );
+        } catch {
+          // Nothing to do and nothing to say. The fallback name is
+          // already on screen.
+        }
+      }
+
       // The chat may have just been created by this very message, and its
       // name comes from this utterance. Refreshed after the stream rather
       // than before, because the row does not exist until the turn lands.
@@ -268,7 +302,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
     // conversationId is a dependency: without it the first message after a
     // resume would be sent with a stale null and strand the old chat.
-  }, [conversationId, refreshChats]);
+  }, [conversationId, refreshChats, turns.length]);
 
   /**
    * Answer a pending approval.

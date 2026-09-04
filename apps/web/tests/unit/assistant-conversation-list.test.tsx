@@ -170,3 +170,32 @@ describe('ConversationList', () => {
     expect(document.querySelector('img')).toBeNull();
   });
 });
+
+describe('a model-written name', () => {
+  it('is rendered as text, never as markup', () => {
+    // The existing case covers a name the customer typed. From Phase 4 a
+    // name can be written by a model, out of an exchange that may have
+    // carried untrusted product copy -- a different provenance, the same
+    // rule.
+    render(
+      <ConversationList
+        conversations={[
+          {
+            id: 'conv_x',
+            name: '<script>alert(1)</script>Order help',
+            lastTurnAt: NOW.toISOString(),
+          },
+        ]}
+        openId={null}
+        onOpen={jest.fn()}
+        onDelete={jest.fn()}
+        now={NOW}
+      />
+    );
+
+    expect(
+      screen.getByText('<script>alert(1)</script>Order help')
+    ).toBeInTheDocument();
+    expect(document.querySelector('script')).toBeNull();
+  });
+});
