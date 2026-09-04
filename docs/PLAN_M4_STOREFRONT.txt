@@ -1200,3 +1200,76 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     anyone answered it. Nothing was sent.") and both Try again and
     Dismiss. That MUST PROVE is now verified live, and Task 6's record
     above has been corrected to say so rather than left standing.
+
+  2026-09-05 -- A COUNTDOWN ON THE SIMULATED ORDER (commit d6a21d7)
+
+    The demo panel said only "Running.", so the one-minute cadence was
+    invisible: you could see a Pause button but not what pausing would
+    freeze, nor how much of the two-minute cancellation window was left.
+    A timer was the missing half of the controls, not decoration.
+
+    ONE CLOCK, NOT TWO. msUntilNextStep answers "how long" where dueStatus
+    answers "what next", from the same four arguments by the same rules --
+    same pausedAt ?? now, same ladder index. A test walks nine instants
+    and asserts the two agree at every one: zero on the countdown must
+    mean dueStatus has a status to write, and any positive value must mean
+    it has none. Without that, the number on screen and the status that
+    lands are free to drift, and the drift would only ever be visible as
+    "the timer is wrong sometimes".
+
+    ROUNDED UP, deliberately. Math.ceil means 0:00 appears only when a
+    step is genuinely due; flooring would park 0:00 on screen for the last
+    whole second of every minute, which reads as stuck rather than as
+    nearly there.
+
+    FLOORED AT ZERO. The status is written when something next reads the
+    order, so there is a real gap between owing a step and having taken
+    it. Counting on into negative numbers would render that ordinary gap
+    as a fault.
+
+    TIMESTAMPS IN, NOT FLAGS. The panel now takes simulationStartedAt and
+    simulationPausedAt instead of the hasClock/paused pair derived from
+    them. It needs the timestamps for the countdown anyway, and keeping
+    the derived flags alongside them would have allowed a state where they
+    disagree -- a countdown ticking on an order the page believed had no
+    clock.
+
+    REACHING ZERO IS ITSELF THE READ THAT ADVANCES THE ORDER. The effect
+    that fires as remaining crosses zero calls router.refresh(), so the
+    timer hitting 0:00 and the status changing happen together instead of
+    up to fifteen seconds apart. It cannot degrade into a refresh per
+    second: if the browser's clock runs ahead of the server's the refresh
+    changes nothing, remaining stays pinned at zero, and an unchanged
+    dependency does not re-run the effect. The fifteen-second poll stays
+    as the safety net for exactly that case, and a test pins it -- nine
+    seconds past a countdown that already ran out must produce ONE
+    refresh, not nine.
+
+    THE ROUTER MOVED INTO A REF, and this is the part worth remembering.
+    Adding a once-a-second tick means this component now re-renders sixty
+    times a minute. useRouter is stable in practice, so an interval whose
+    dependencies include the router is fine -- until it isn't, at which
+    point the interval is torn down and restarted every second and the
+    fifteen-second poll never once reaches fifteen seconds. Nothing
+    errors. Nothing logs. The order simply stops advancing. The old test
+    mock returned a FRESH object per call, which is precisely that
+    failure, and it had been harmless only because nothing re-rendered.
+    Fixed on both sides: the mock returns one stable object (matching the
+    real hook), and the intervals depend on nothing but what should
+    restart them.
+
+    Mutation-tested: 9 applied, 9 caught -- countdown not floored at zero
+    (2 failures), counting to the step already reached rather than the
+    next (9), clock running while paused (2), rounding down instead of up
+    (1), dropping the refresh at zero (2), refreshing on every tick
+    instead of only at zero (2), polling while paused (1), showing 0:00
+    instead of "Updating" (1), and redrawing every two seconds instead of
+    one (2). Every mutation was applied by exact-string replacement with
+    an asserted match count, because a mutation that silently changes no
+    file is indistinguishable in the output from one the tests caught --
+    that has cost this project two meaningless results already.
+
+    NOT VERIFIED LIVE YET. Everything above is the local suite, typecheck
+    and build. The countdown reads the browser's clock against a server
+    timestamp, and the one thing no local test can exercise is real skew
+    between the two.
