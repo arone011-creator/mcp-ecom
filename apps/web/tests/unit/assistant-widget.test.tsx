@@ -604,3 +604,94 @@ describe('icons instead of words, and where the view sits', () => {
     expect(blocks[1]!.className).toMatch(/min-h-full/);
   });
 });
+
+describe('the panel header', () => {
+  it('offers a new chat and a history button', async () => {
+    renderWidget();
+    await open();
+
+    expect(
+      screen.getByRole('button', { name: 'Start a new chat' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show chat history' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows the history when the history button is clicked', async () => {
+    renderWidget();
+    await open();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show chat history' }));
+    });
+
+    // The empty-state wording of ConversationList, which is what renders
+    // when the provider has no chats.
+    expect(screen.getByText(/No chats yet/i)).toBeInTheDocument();
+  });
+
+  it('goes back to the conversation from the history', async () => {
+    renderWidget();
+    await open();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show chat history' }));
+    });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Back to the conversation' })
+      );
+    });
+
+    expect(screen.getByPlaceholderText('Ask something')).toBeInTheDocument();
+  });
+
+  it('hides the message box while the history is showing', async () => {
+    // Typing into a box that would post to whichever chat happens to be
+    // open is a way to send a message to the wrong conversation.
+    renderWidget();
+    await open();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show chat history' }));
+    });
+
+    expect(screen.queryByPlaceholderText('Ask something')).toBeNull();
+  });
+
+  it('disables both header buttons while a turn is streaming', async () => {
+    // THE MUST PROVE, on the rendering side. The provider refuses anyway,
+    // but a button that looks live and does nothing is its own bug.
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/assistant/conversations')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: { conversations: [], conversation: null },
+          }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: { getReader: () => ({ read: () => new Promise(() => {}) }) },
+      } as unknown as Response;
+    });
+
+    renderWidget();
+    await open();
+    await ask('what did I order?');
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Start a new chat' })
+      ).toBeDisabled()
+    );
+    expect(
+      screen.getByRole('button', { name: 'Show chat history' })
+    ).toBeDisabled();
+  });
+});
