@@ -8,6 +8,7 @@ import { ArrowLeft, Package, Truck, CheckCircle, Clock } from 'lucide-react';
 import { authOptions } from '@/lib/auth';
 import { getOrderById } from '@/server/queries/orders';
 import { OrderSimulationPanel } from '@/components/orders/order-simulation-panel';
+import { isTerminated } from '@/lib/orders/simulation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -82,8 +83,7 @@ export default async function OrderDetailPage({
   // first dot green, three grey -- because CANCELLED appears in no
   // `completed` list below. That told the customer their cancelled order
   // was on its way.
-  const terminated =
-    order.status === 'CANCELLED' || order.status === 'REFUNDED';
+  const terminated = isTerminated(order.status);
 
   const statusSteps = [
     { key: 'PENDING', label: 'Order Placed', completed: true },

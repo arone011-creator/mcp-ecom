@@ -3,7 +3,12 @@
 // The ladder. A pure function of four arguments -- no database, no clock
 // of its own -- so these are a table of inputs rather than a mocked clock.
 
-import { LADDER, STEP_MS, dueStatus } from '@/lib/orders/simulation';
+import {
+  LADDER,
+  STEP_MS,
+  dueStatus,
+  isTerminated,
+} from '@/lib/orders/simulation';
 
 const START = new Date('2026-09-05T12:00:00.000Z');
 
@@ -92,5 +97,36 @@ describe('dueStatus', () => {
 
   it('steps once a minute', () => {
     expect(STEP_MS).toBe(60_000);
+  });
+});
+
+describe('isTerminated', () => {
+  // The order page draws its four-step tracker for anything that is NOT
+  // terminated. Before this branch existed, a CANCELLED order rendered
+  // identically to a PENDING one -- first dot green, three grey -- which
+  // told the customer their cancelled order was on its way.
+  //
+  // This function exists because a mutation found that gap: removing the
+  // branch broke no test, since the page is a server component with no
+  // harness. The decision is testable even where the rendering is not.
+
+  it('is true for an order that was cancelled', () => {
+    expect(isTerminated('CANCELLED')).toBe(true);
+  });
+
+  it('is true for an order that was refunded', () => {
+    expect(isTerminated('REFUNDED')).toBe(true);
+  });
+
+  it('is false for an order that is still on its way', () => {
+    expect(isTerminated('PENDING')).toBe(false);
+    expect(isTerminated('PROCESSING')).toBe(false);
+    expect(isTerminated('SHIPPED')).toBe(false);
+  });
+
+  it('is false for a delivered order, which arrived rather than ended', () => {
+    // DELIVERED is the end of the ladder, so the tracker should show it
+    // complete rather than replacing it with a notice.
+    expect(isTerminated('DELIVERED')).toBe(false);
   });
 });

@@ -52,6 +52,20 @@ export const STEP_MS = 60_000;
  * returning the computed step: an order ahead of its clock is left alone.
  * Rewinding a customer's order would be worse than a stale one.
  */
+/**
+ * Whether this order has ended somewhere other than delivered.
+ *
+ * Exists so the order page's rendering decision is a testable function
+ * rather than an expression inside a server component. It was found by a
+ * mutation: removing the branch that stops the tracker drawing four dots
+ * for a CANCELLED order broke no test at all, because there is no harness
+ * for that page -- and "your cancelled order is on its way" is precisely
+ * the sort of thing that should not be able to come back silently.
+ */
+export function isTerminated(status: OrderStatus): boolean {
+  return status === 'CANCELLED' || status === 'REFUNDED';
+}
+
 export function dueStatus(
   status: OrderStatus,
   startedAt: Date | null,
