@@ -13,9 +13,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, X } from 'lucide-react';
 
+import { animateScrollTop } from '@/lib/assistant/smooth-scroll';
 import { AssistantText } from './assistant-text';
 import { useAssistant } from './assistant-provider';
 import { ToolActivityChip } from './tool-activity';
+
+/**
+ * The breathing room left above the newest question when it is scrolled
+ * up. Flush against the header's rule reads as clipped rather than as
+ * placed.
+ */
+const TOP_GAP = 12;
 
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
@@ -34,15 +42,27 @@ export function AssistantWidget() {
   // for every message_delta would drag the view back on every fragment
   // and fight anyone who had scrolled up to re-read something.
   const lastTurn = useRef<HTMLDivElement | null>(null);
+  const scroller = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open || transcript.length === 0) return;
-    // NOT behavior: 'smooth'. Measured in Chrome against the deployed
-    // build: a smooth scrollIntoView inside this container moves nothing
-    // at all, while the instant one lands the block at exactly offset 0.
-    // An animated scroll would also be racing the answer streaming in
-    // underneath it, which is a race with no good outcome.
-    lastTurn.current?.scrollIntoView({ block: 'start' });
+
+    const block = lastTurn.current;
+    const view = scroller.current;
+    if (!block || !view) return;
+
+    // Measured from the two rectangles rather than read off offsetTop:
+    // offsetTop is relative to the nearest POSITIONED ancestor, which is
+    // not necessarily this container, and quietly gives a different
+    // number the day someone adds `relative` to a wrapper.
+    const offset =
+      block.getBoundingClientRect().top - view.getBoundingClientRect().top;
+
+    // Animated by hand rather than by the browser. scrollIntoView with
+    // behavior:'smooth', scrollTo with behavior:'smooth' and CSS
+    // scroll-behavior:smooth were each measured against the deployed
+    // build in Chrome and moved this container by nothing at all.
+    animateScrollTop(view, view.scrollTop + offset - TOP_GAP);
   }, [open, transcript.length]);
 
   async function submit(event: React.FormEvent) {
@@ -84,7 +104,10 @@ export function AssistantWidget() {
         </button>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3 text-sm">
+      <div
+        ref={scroller}
+        className="flex-1 space-y-3 overflow-y-auto px-3 py-3 text-sm"
+      >
         {transcript.length === 0 ? (
           <p className="text-slate-500">
             Ask about your orders, or find something in the shop.

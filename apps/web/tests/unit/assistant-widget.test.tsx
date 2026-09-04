@@ -8,6 +8,12 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+jest.mock('@/lib/assistant/smooth-scroll', () => ({
+  ...jest.requireActual('@/lib/assistant/smooth-scroll'),
+  animateScrollTop: jest.fn(),
+}));
+
+import { animateScrollTop } from '@/lib/assistant/smooth-scroll';
 import { AssistantProvider } from '@/components/assistant/assistant-provider';
 import { AssistantWidget } from '@/components/assistant/assistant-widget';
 
@@ -113,13 +119,10 @@ async function ask(text = 'what did I order?') {
   });
 }
 
-// jsdom implements no layout and therefore no scrollIntoView. Stubbed
-// rather than skipped: where the view sits after a question is asked is a
-// behaviour worth pinning down, even if only the call can be observed.
-Element.prototype.scrollIntoView = jest.fn();
+const mockAnimate = animateScrollTop as unknown as jest.Mock;
 
 beforeEach(() => {
-  (Element.prototype.scrollIntoView as jest.Mock).mockClear();
+  mockAnimate.mockClear();
   global.fetch = jest.fn().mockResolvedValue(streamOf(''));
 });
 
@@ -539,16 +542,20 @@ describe('icons instead of words, and where the view sits', () => {
     await open();
     await ask('what did I order?');
 
-    await waitFor(() =>
-      // Asserted EXACTLY, not objectContaining. behavior: 'smooth' was
-      // measured in Chrome to move this container not at all, so the
-      // absence of it is part of the behaviour, not an implementation
-      // detail. jsdom has no layout, so the call is all that can be seen
-      // from here -- which is the reason to pin it precisely.
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-        block: 'start',
-      })
+    // jsdom has no layout, so every rectangle here is zero and the
+    // computed destination is the gap, negative. That the panel asks to
+    // be moved -- and by how much relative to the message -- is what can
+    // be seen from here; animateScrollTop's own tests cover the motion.
+    await waitFor(() => expect(mockAnimate).toHaveBeenCalled());
+
+    const [element, destination] = mockAnimate.mock.calls[0]!;
+    expect(element).toBe(
+      screen.getByLabelText(/message the assistant/i).closest('[role=dialog]')
+        ?.querySelector('.overflow-y-auto')
     );
+    // The gap under the header: the message is placed BELOW the rule, not
+    // flush against it.
+    expect(destination).toBe(-12);
   });
 
   it('does not yank the view on every fragment as the answer streams', async () => {
@@ -561,8 +568,7 @@ describe('icons instead of words, and where the view sits', () => {
     await open();
     await ask('what did I order?');
 
-    const afterAsking = (Element.prototype.scrollIntoView as jest.Mock).mock
-      .calls.length;
+    const afterAsking = mockAnimate.mock.calls.length;
 
     await act(async () => {
       stream.push(event(0, 'message_delta', { text: 'You ' }));
@@ -570,9 +576,7 @@ describe('icons instead of words, and where the view sits', () => {
       stream.push(event(2, 'message_delta', { text: 'ORD-1.' }));
     });
 
-    expect(
-      (Element.prototype.scrollIntoView as jest.Mock).mock.calls
-    ).toHaveLength(afterAsking);
+    expect(mockAnimate.mock.calls).toHaveLength(afterAsking);
 
     await act(async () => {
       stream.end();
