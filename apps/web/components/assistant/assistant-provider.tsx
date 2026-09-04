@@ -59,6 +59,13 @@ export interface Turn {
   events: AssistantEvent[];
 }
 
+/** One row of the history list. Shaped by the list route, not by Prisma. */
+export interface ListedChat {
+  id: string;
+  name: string;
+  lastTurnAt: string;
+}
+
 export interface TranscriptEntry {
   utterance: string;
   conversation: Conversation;
@@ -67,6 +74,14 @@ export interface TranscriptEntry {
 interface AssistantContextValue {
   /** The conversation being had, or null before the first message. */
   conversationId: string | null;
+  /** Every chat this customer has had, most recently active first. */
+  conversations: ListedChat[];
+  /** Clear the panel for a fresh chat. Stores nothing. */
+  newChat: () => void;
+  /** Replace the panel with a stored chat. */
+  openConversation: (id: string) => Promise<void>;
+  /** Remove a chat. Clears the panel if it was the open one. */
+  deleteConversation: (id: string) => Promise<void>;
   events: AssistantEvent[];
   conversation: Conversation;
   turns: Turn[];
@@ -87,6 +102,23 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AssistantStatus>('idle');
   const [answered, setAnswered] = useState<Record<string, DecisionState>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ListedChat[]>([]);
+
+  // Quiet on failure, like the resume. A customer who cannot see the list
+  // of old chats can still have a new one, and an error banner over a
+  // sidebar is worse than an empty sidebar.
+  const refreshChats = useCallback(async () => {
+    try {
+      const response = await fetch('/api/assistant/conversations', {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) return;
+      const body = await response.json();
+      setConversations(body?.data?.conversations ?? []);
+    } catch {
+      // Nothing to show. The panel still works.
+    }
+  }, []);
 
   // RESUME ON MOUNT. Mounted once in the root layout, so this runs once
   // per page load rather than once per navigation.
@@ -96,6 +128,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // start a new one over it would be a fault.
   useEffect(() => {
     let live = true;
+
+    void refreshChats();
 
     fetch('/api/assistant/conversations/latest', {
       headers: { accept: 'application/json' },
@@ -108,9 +142,17 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
         const stored = body?.data?.conversation;
         if (!live || !stored) return;
 
-        setConversationId(stored.id);
-        setTurns(
-          (stored.turns ?? []).map(
+        // NEVER CLOBBER A CONVERSATION ALREADY UNDER WAY. This response
+        // can land after the customer has already sent their first
+        // message -- they opened the panel and typed immediately, or the
+        // network was slow. Hydrating unconditionally would delete the
+        // turn they are watching and file their next message into the
+        // wrong chat.
+        setConversationId((current) => current ?? stored.id);
+        setTurns((current) =>
+          current.length > 0
+            ? current
+            : (stored.turns ?? []).map(
             (turn: { utterance: string; events: unknown[] }) => ({
               utterance: turn.utterance,
               // THE SAME DOOR AS THE LIVE STREAM. These rows were written
@@ -120,7 +162,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
                 .map(parseEvent)
                 .filter((event): event is AssistantEvent => event !== null),
             })
-          )
+              )
         );
       })
       .catch(() => {
@@ -131,7 +173,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     return () => {
       live = false;
     };
-  }, []);
+  }, [refreshChats]);
 
   // A ref rather than the state value: two clicks in the same tick would
   // both read the same stale `status` and both fire.
@@ -213,6 +255,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       // customer looking at their own question and no reply, with nothing
       // to act on -- which is exactly what a broken agent deploy looked
       // like from the outside.
+      // The chat may have just been created by this very message, and its
+      // name comes from this utterance. Refreshed after the stream rather
+      // than before, because the row does not exist until the turn lands.
+      void refreshChats();
+
       setStatus(received === 0 ? 'error' : 'idle');
     } catch {
       setStatus('error');
@@ -221,7 +268,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
     // conversationId is a dependency: without it the first message after a
     // resume would be sent with a stale null and strand the old chat.
-  }, [conversationId]);
+  }, [conversationId, refreshChats]);
 
   /**
    * Answer a pending approval.
@@ -262,6 +309,91 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Clear the panel for a fresh chat.
+   *
+   * STORES NOTHING. The row is created by the bridge on the first message,
+   * exactly as in Phase 2 -- a row created here would leave a phantom
+   * empty chat in the list every time somebody pressed + and changed
+   * their mind.
+   */
+  const newChat = useCallback(() => {
+    // The stream in flight belongs to the chat that is open. Switching
+    // out from under it would file its answer against the wrong
+    // conversation. The header disables the button too; this is the
+    // guard that does not depend on rendering.
+    if (inFlight.current) return;
+
+    setTurns([]);
+    setConversationId(null);
+    setAnswered({});
+    setStatus('idle');
+  }, []);
+
+  /** Replace the panel with a stored chat. */
+  const openConversation = useCallback(async (id: string) => {
+    if (inFlight.current) return;
+
+    try {
+      const response = await fetch(
+        `/api/assistant/conversations/${encodeURIComponent(id)}`,
+        { headers: { accept: 'application/json' } }
+      );
+      if (!response.ok) return;
+
+      const body = await response.json();
+      const stored = body?.data?.conversation;
+      if (!stored) return;
+
+      setConversationId(stored.id);
+      setAnswered({});
+      setStatus('idle');
+      setTurns(
+        (stored.turns ?? []).map(
+          (turn: { utterance: string; events: unknown[] }) => ({
+            utterance: turn.utterance,
+            // The same door as the live stream and the resume: these rows
+            // were written by the agent.
+            events: (turn.events ?? [])
+              .map(parseEvent)
+              .filter((event): event is AssistantEvent => event !== null),
+          })
+        )
+      );
+    } catch {
+      // The chat stays as it was. Failing to open an old conversation
+      // must not close the one being had.
+    }
+  }, []);
+
+  /**
+   * Remove a chat.
+   *
+   * Clears the panel when the deleted chat is the open one. Leaving the
+   * transcript up after its rows are gone would show a conversation that
+   * no longer exists, and the next message would be posted against a
+   * deleted id -- a 404 on a chat the customer is reading.
+   */
+  const deleteConversation = useCallback(async (id: string) => {
+    try {
+      const response = await fetch(
+        `/api/assistant/conversations/${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) return;
+
+      setConversations((previous) => previous.filter((chat) => chat.id !== id));
+      setConversationId((previous) => {
+        if (previous !== id) return previous;
+        setTurns([]);
+        setAnswered({});
+        return null;
+      });
+    } catch {
+      // Nothing removed, nothing changed on screen.
+    }
+  }, []);
+
   // Derived, so `turns` stays the single source of truth. `events` is kept
   // flat for callers that want the raw stream and for the gap report.
   const events = useMemo(() => turns.flatMap((turn) => turn.events), [turns]);
@@ -282,6 +414,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       conversationId,
+      conversations,
+      newChat,
+      openConversation,
+      deleteConversation,
       events,
       conversation,
       transcript,
@@ -293,6 +429,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       conversationId,
+      conversations,
+      newChat,
+      openConversation,
+      deleteConversation,
       events,
       conversation,
       transcript,

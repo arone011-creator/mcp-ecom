@@ -400,11 +400,13 @@ data: ${JSON.stringify({
       streamOf(answer('It ships on Friday.')),
     ];
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
-      if (String(url).includes('/conversations/latest')) {
+      if (String(url).includes('/api/assistant/conversations')) {
+        // Covers BOTH the resume and the list. Without the list branch
+        // that request would take a turn's stream off the queue.
         return {
           ok: true,
           status: 200,
-          json: async () => ({ data: { conversation: null } }),
+          json: async () => ({ data: { conversation: null, conversations: [] } }),
         } as unknown as Response;
       }
       return turns.shift()!;

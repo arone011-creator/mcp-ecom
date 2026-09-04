@@ -263,11 +263,13 @@ describe('turns own their events', () => {
     // the first turn's stream.
     const turns = [streamOf(first), streamOf(second)];
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
-      if (String(url).includes('/conversations/latest')) {
+      if (String(url).includes('/api/assistant/conversations')) {
+        // Covers BOTH the resume and the list. Without the list branch
+        // that request would take a turn's stream off the queue.
         return {
           ok: true,
           status: 200,
-          json: async () => ({ data: { conversation: null } }),
+          json: async () => ({ data: { conversation: null, conversations: [] } }),
         } as unknown as Response;
       }
       return turns.shift()!;
@@ -449,5 +451,317 @@ describe('resuming a stored conversation', () => {
       expect(screen.getByTestId('shape')).toHaveTextContent('hello=>readable')
     );
     expect(screen.getByTestId('shape')).not.toHaveTextContent('from the future');
+  });
+});
+
+describe('managing several chats', () => {
+  const LIST = {
+    data: {
+      conversations: [
+        {
+          id: 'conv_2',
+          name: 'Cancelling an order',
+          lastTurnAt: '2026-09-04T11:00:00.000Z',
+        },
+        {
+          id: 'conv_1',
+          name: 'what did I order?',
+          lastTurnAt: '2026-09-03T09:00:00.000Z',
+        },
+      ],
+    },
+  };
+
+  const OPENED = {
+    data: {
+      conversation: {
+        id: 'conv_1',
+        title: null,
+        turns: [
+          {
+            utterance: 'what did I order?',
+            events: [
+              { v: 1, seq: 0, type: 'message', data: { text: 'You ordered ORD-1.' } },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  const RESUMED = {
+    data: {
+      conversation: {
+        id: 'conv_2',
+        title: null,
+        turns: [
+          {
+            utterance: 'cancel ORD-9 please',
+            events: [
+              { v: 1, seq: 0, type: 'message', data: { text: 'Cancelled.' } },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  function json(body: unknown, status = 200) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    } as unknown as Response;
+  }
+
+  /** Routes each url to its own answer, so nothing depends on call order. */
+  function api(overrides: Record<string, Response> = {}) {
+    return jest
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        const path = String(url);
+        const key = `${init?.method ?? 'GET'} ${path}`;
+        if (overrides[key]) return overrides[key]!;
+        if (path.includes('/conversations/latest')) return json(RESUMED);
+        if (path.endsWith('/api/assistant/conversations')) return json(LIST);
+        if (path.includes('/api/assistant/conversations/')) {
+          if (init?.method === 'DELETE') return json({ data: { deleted: true } });
+          return json(OPENED);
+        }
+        return streamOf(
+          'event: assistant\ndata: {"v":1,"seq":0,"type":"message","data":{"text":"a reply"}}\n\n'
+        );
+      });
+  }
+
+  function ChatsProbe() {
+    const {
+      conversationId,
+      conversations,
+      transcript,
+      status,
+      send,
+      newChat,
+      openConversation,
+      deleteConversation: remove,
+    } = useAssistant();
+
+    return (
+      <div>
+        <button onClick={() => send('a question')}>ask</button>
+        <button onClick={() => newChat()}>new</button>
+        <button onClick={() => openConversation('conv_1')}>open-1</button>
+        <button onClick={() => remove('conv_1')}>delete-1</button>
+        <button onClick={() => remove('conv_2')}>delete-2</button>
+        <span data-testid="status">{status}</span>
+        <span data-testid="conversation">{conversationId ?? 'none'}</span>
+        <span data-testid="names">
+          {conversations.map((c) => c.name).join(' | ')}
+        </span>
+        <span data-testid="utterances">
+          {transcript.map((entry) => entry.utterance).join(' | ')}
+        </span>
+      </div>
+    );
+  }
+
+  function renderChats() {
+    return render(
+      <AssistantProvider>
+        <ChatsProbe />
+      </AssistantProvider>
+    );
+  }
+
+  it('loads the list of chats on mount', async () => {
+    global.fetch = api();
+
+    renderChats();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('names')).toHaveTextContent(
+        'Cancelling an order | what did I order?'
+      )
+    );
+  });
+
+  it('starts a new chat WITHOUT storing anything', async () => {
+    // THE MUST PROVE. A row created when you press + would leave a phantom
+    // empty chat in the list every time somebody changed their mind.
+    global.fetch = api();
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2')
+    );
+
+    const before = (global.fetch as jest.Mock).mock.calls.length;
+
+    await act(async () => {
+      screen.getByText('new').click();
+    });
+
+    expect(screen.getByTestId('conversation')).toHaveTextContent('none');
+    expect(screen.getByTestId('utterances')).toHaveTextContent('');
+    expect((global.fetch as jest.Mock).mock.calls).toHaveLength(before);
+  });
+
+  it('opens a chat from the list and shows its turns', async () => {
+    global.fetch = api();
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2')
+    );
+
+    await act(async () => {
+      screen.getByText('open-1').click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_1')
+    );
+    expect(screen.getByTestId('utterances')).toHaveTextContent(
+      'what did I order?'
+    );
+  });
+
+  it('refuses to switch chats while a turn is streaming', async () => {
+    // THE MUST PROVE. The stream in flight belongs to the chat that is
+    // open; switching under it would file the answer against the wrong
+    // conversation. The header buttons are disabled too, but that is a
+    // rendering detail and this is the invariant.
+    const slow = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: { getReader: () => ({ read: () => new Promise(() => {}) }) },
+    } as unknown as Response;
+
+    global.fetch = api({ 'POST /api/assistant': slow });
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2')
+    );
+
+    await act(async () => {
+      screen.getByText('ask').click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('streaming')
+    );
+
+    await act(async () => {
+      screen.getByText('open-1').click();
+      screen.getByText('new').click();
+    });
+
+    // Still the chat the stream belongs to.
+    expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2');
+  });
+
+  it('deletes a chat and drops it from the list', async () => {
+    global.fetch = api();
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('names')).toHaveTextContent('what did I order?')
+    );
+
+    await act(async () => {
+      screen.getByText('delete-1').click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('names')).not.toHaveTextContent(
+        'what did I order?'
+      )
+    );
+    expect(screen.getByTestId('names')).toHaveTextContent('Cancelling an order');
+  });
+
+  it('clears the panel when the chat being deleted is the open one', async () => {
+    // Otherwise the transcript stays on screen after its rows are gone,
+    // and the next message is posted against a deleted conversation --
+    // a 404 on a chat the customer is looking at.
+    global.fetch = api();
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2')
+    );
+
+    await act(async () => {
+      screen.getByText('delete-2').click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('none')
+    );
+    expect(screen.getByTestId('utterances')).toHaveTextContent('');
+  });
+
+  it('leaves the open chat alone when a DIFFERENT one is deleted', async () => {
+    global.fetch = api();
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2')
+    );
+
+    await act(async () => {
+      screen.getByText('delete-1').click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('names')).not.toHaveTextContent(
+        'what did I order?'
+      )
+    );
+    expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2');
+    expect(screen.getByTestId('utterances')).toHaveTextContent(
+      'cancel ORD-9 please'
+    );
+  });
+
+  it('refreshes the list after a message, so a new chat appears in it', async () => {
+    global.fetch = api();
+
+    renderChats();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_2')
+    );
+
+    const listCallsBefore = (global.fetch as jest.Mock).mock.calls.filter(
+      ([url]) => String(url).endsWith('/api/assistant/conversations')
+    ).length;
+
+    await act(async () => {
+      screen.getByText('ask').click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+
+    const listCallsAfter = (global.fetch as jest.Mock).mock.calls.filter(
+      ([url]) => String(url).endsWith('/api/assistant/conversations')
+    ).length;
+
+    expect(listCallsAfter).toBeGreaterThan(listCallsBefore);
+  });
+
+  it('stays usable when the list cannot be loaded', async () => {
+    global.fetch = api({ 'GET /api/assistant/conversations': json({}, 500) });
+
+    renderChats();
+
+    await act(async () => {
+      screen.getByText('ask').click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('utterances')).toHaveTextContent('a question')
+    );
   });
 });
