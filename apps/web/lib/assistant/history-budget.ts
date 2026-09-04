@@ -94,8 +94,11 @@ export function buildHistory(turns: StoredContext[], budget: number): unknown[] 
   const kept: unknown[][] = [];
   let spent = 0;
 
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    const messages = replayableTurn(turns[index].agentContext);
+  // Reversed rather than indexed backwards: the copy costs nothing next to
+  // stringifying each turn, and it keeps the loop about turns rather than
+  // about arithmetic.
+  for (const turn of [...turns].reverse()) {
+    const messages = replayableTurn(turn.agentContext);
     if (messages === null) break;
 
     const cost = estimateTokens(messages);

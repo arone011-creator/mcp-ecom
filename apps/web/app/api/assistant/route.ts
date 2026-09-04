@@ -29,9 +29,11 @@ import { SseParser } from '@/lib/assistant/sse';
 import { forgetApprovalsOf, rememberApproval } from '@/lib/assistant/approvals';
 import {
   appendTurn,
+  loadAgentContext,
   ownedConversation,
   startConversation,
 } from '@/lib/assistant/conversation-store';
+import { buildHistory } from '@/lib/assistant/history-budget';
 import { forgetTurn, rememberTurn } from '@/lib/assistant/turns';
 
 export const runtime = 'nodejs';
@@ -39,6 +41,25 @@ export const dynamic = 'force-dynamic';
 
 function frame(event: string, data: string): string {
   return `event: ${event}\ndata: ${data}\n\n`;
+}
+
+/** What one conversation may spend on remembering itself. */
+const DEFAULT_HISTORY_BUDGET = 6000;
+
+/**
+ * Read per request, not at module load, so a deployment can change it
+ * without a rebuild -- and so a test can set it between cases.
+ *
+ * 6000 estimated tokens is far below anything the model would refuse. The
+ * ceiling here is about what a long conversation COSTS on every message,
+ * not about what fits.
+ */
+function historyBudget(): number {
+  const configured = Number(process.env.ASSISTANT_HISTORY_TOKEN_BUDGET);
+
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_HISTORY_BUDGET;
 }
 
 export async function POST(req: NextRequest) {
@@ -76,17 +97,35 @@ export async function POST(req: NextRequest) {
   // Resolved before anything is spent. A conversation that is not this
   // customer's must not cost a model call to refuse.
   let conversationId: string;
+  // The earlier turns of THIS conversation, trimmed to the budget. Empty
+  // for a new chat, and empty whenever the read fails -- see below.
+  let history: unknown[] = [];
+
   if (continuing) {
     const owned = await ownedConversation(session.sub as string, continuing);
     // The same answer as one that does not exist: a distinguishable
     // refusal confirms a stranger's id is real.
     if (!owned) return fail(404, 'No such conversation');
     conversationId = owned.id;
+
+    try {
+      history = buildHistory(
+        await loadAgentContext(session.sub as string, conversationId),
+        historyBudget()
+      );
+    } catch (error) {
+      // A CHAT THAT CANNOT REMEMBER STILL ANSWERS. Failing the turn here
+      // would take a working conversation down over a degraded feature,
+      // and the customer cannot act on the difference anyway.
+      console.error('Loading assistant history failed:', error);
+    }
   } else {
     // LAZILY, on the first message. A row created when the panel opens
     // would leave an empty chat in the history list every time somebody
     // clicked and changed their mind.
     conversationId = await startConversation(session.sub as string);
+    // And no read at all: there is nothing to find, and the query would
+    // run on the first message of every conversation ever started.
   }
 
   const bearer = await mintBearer(
@@ -104,7 +143,7 @@ export async function POST(req: NextRequest) {
         'x-agent-key': agentKey,
         authorization: `Bearer ${bearer}`,
       },
-      body: JSON.stringify({ utterance }),
+      body: JSON.stringify({ utterance, history }),
       // A dropped browser connection cancels the agent's turn, rather
       // than leaving it running with nowhere to send its events -- and,
       // more expensively, holding an MCP session open.
@@ -132,6 +171,10 @@ export async function POST(req: NextRequest) {
   // What the panel is being shown, kept so the same events can be written
   // down. Stored and forwarded must be one story about the turn, not two.
   const forwarded: unknown[] = [];
+  // The agent's own record of this turn, arriving on the last control
+  // frame. Never forwarded and never parsed here -- the storefront
+  // stores it and hands it back, and only the agent reads inside it.
+  let agentContext: unknown[] | null = null;
 
   function rememberIfApproval(data: string): void {
     if (!openTurn) return;
@@ -177,7 +220,12 @@ export async function POST(req: NextRequest) {
         // fired off afterwards -- work started after a handler returns is
         // work the runtime is free to discard.
         try {
-          await appendTurn({ conversationId, utterance, events: forwarded });
+          await appendTurn({
+            conversationId,
+            utterance,
+            events: forwarded,
+            agentContext,
+          });
         } catch (error) {
           // A turn that cannot be written is still a turn that happened.
           // The customer has read it; failing the stream now would take it
@@ -194,6 +242,7 @@ export async function POST(req: NextRequest) {
             const control = JSON.parse(item.data) as {
               turn_id?: string;
               session_id?: string;
+              context?: unknown;
             };
             if (control.turn_id && control.session_id) {
               rememberTurn(control.turn_id, {
@@ -205,6 +254,11 @@ export async function POST(req: NextRequest) {
                 turnId: control.turn_id,
                 sessionId: control.session_id,
               };
+            }
+            // A separate frame, and a separate branch: the turn opens
+            // with the session id and closes with the transcript.
+            if (Array.isArray(control.context)) {
+              agentContext = control.context;
             }
           } catch {
             // A control frame we cannot read is one we cannot act on.
