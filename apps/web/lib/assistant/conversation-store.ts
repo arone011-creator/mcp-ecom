@@ -119,3 +119,101 @@ export async function loadLatestConversation(
     })),
   };
 }
+
+/** The longest a fallback name may be before it is cut short. */
+const NAME_LIMIT = 60;
+
+export interface ListedConversation {
+  id: string;
+  /** What to show in the list: the title, or what the customer first said. */
+  name: string;
+  lastTurnAt: Date;
+}
+
+/**
+ * Turn a first utterance into something that fits a narrow list.
+ *
+ * Phase 4 replaces this with a model-generated title, and this stays as
+ * the fallback for a title call that failed -- so a chat is never nameless
+ * and a failed title never blocks anything.
+ */
+function fallbackName(utterance: string | undefined): string {
+  const trimmed = (utterance ?? '').trim();
+  if (!trimmed) return 'New chat';
+  if (trimmed.length <= NAME_LIMIT) return trimmed;
+
+  return `${trimmed.slice(0, NAME_LIMIT - 3)}...`;
+}
+
+/** Every chat this customer has, most recently active first. */
+export async function listConversations(
+  userId: string
+): Promise<ListedConversation[]> {
+  const rows = await prisma.conversation.findMany({
+    where: { userId },
+    orderBy: { lastTurnAt: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      lastTurnAt: true,
+      // ONE turn each. Fetching every turn of every conversation to render
+      // a sidebar would grow with the customer's history.
+      turns: { orderBy: { seq: 'asc' }, take: 1, select: { utterance: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.title ?? fallbackName(row.turns[0]?.utterance),
+    lastTurnAt: row.lastTurnAt,
+  }));
+}
+
+/** One chat in full, if this customer owns it. Null otherwise. */
+export async function loadConversation(
+  userId: string,
+  id: string
+): Promise<StoredConversation | null> {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, userId },
+    select: {
+      id: true,
+      title: true,
+      turns: {
+        orderBy: { seq: 'asc' },
+        select: { utterance: true, events: true },
+      },
+    },
+  });
+
+  if (!conversation) return null;
+
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    turns: conversation.turns.map((turn) => ({
+      utterance: turn.utterance,
+      events: (turn.events ?? []) as unknown[],
+    })),
+  };
+}
+
+/**
+ * Remove a chat. True if one was removed, false if there was nothing of
+ * this customer's to remove.
+ *
+ * deleteMany rather than delete: delete THROWS when nothing matches, and a
+ * thrown error is a different observable answer from "not yours" -- which
+ * is exactly the distinction an enumeration attack is looking for. The
+ * turns go with it through the schema's onDelete: Cascade.
+ */
+export async function deleteConversation(
+  userId: string,
+  id: string
+): Promise<boolean> {
+  const { count } = await prisma.conversation.deleteMany({
+    where: { id, userId },
+  });
+
+  return count > 0;
+}

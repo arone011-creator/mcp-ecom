@@ -9,7 +9,9 @@ const mockPrisma = {
   conversation: {
     create: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
+    deleteMany: jest.fn(),
   },
   conversationTurn: {
     create: jest.fn(),
@@ -21,6 +23,9 @@ jest.mock('@/lib/prisma', () => ({ __esModule: true, default: mockPrisma }));
 
 import {
   appendTurn,
+  deleteConversation,
+  listConversations,
+  loadConversation,
   loadLatestConversation,
   ownedConversation,
   startConversation,
@@ -32,6 +37,8 @@ beforeEach(() => {
   mockPrisma.conversation.update.mockReset();
   mockPrisma.conversationTurn.create.mockReset();
   mockPrisma.conversationTurn.aggregate.mockReset();
+  mockPrisma.conversation.findMany.mockReset();
+  mockPrisma.conversation.deleteMany.mockReset();
 });
 
 describe('startConversation', () => {
@@ -159,5 +166,157 @@ describe('loadLatestConversation', () => {
     mockPrisma.conversation.findFirst.mockResolvedValue(null);
 
     expect(await loadLatestConversation('user_a')).toBeNull();
+  });
+});
+
+describe('listConversations', () => {
+  it('returns the customers chats, newest activity first', async () => {
+    mockPrisma.conversation.findMany.mockResolvedValue([
+      {
+        id: 'conv_2',
+        title: 'Cancelling an order',
+        lastTurnAt: new Date('2026-09-04T11:00:00.000Z'),
+        turns: [{ utterance: 'cancel ORD-9 please' }],
+      },
+      {
+        id: 'conv_1',
+        title: null,
+        lastTurnAt: new Date('2026-09-03T09:00:00.000Z'),
+        turns: [{ utterance: 'what did I order recently?' }],
+      },
+    ]);
+
+    const listed = await listConversations('user_a');
+
+    expect(listed.map((c) => c.id)).toEqual(['conv_2', 'conv_1']);
+
+    const query = mockPrisma.conversation.findMany.mock.calls[0]![0];
+    expect(query.where).toEqual({ userId: 'user_a' });
+    expect(query.orderBy).toEqual({ lastTurnAt: 'desc' });
+  });
+
+  it('names an untitled chat by what the customer first said', async () => {
+    // Phase 4 fills `title`. Until then the list must still read as a
+    // list of chats rather than a column of identical placeholders.
+    mockPrisma.conversation.findMany.mockResolvedValue([
+      {
+        id: 'conv_1',
+        title: null,
+        lastTurnAt: new Date(),
+        turns: [{ utterance: 'what did I order recently?' }],
+      },
+    ]);
+
+    expect((await listConversations('user_a'))[0]!.name).toBe(
+      'what did I order recently?'
+    );
+  });
+
+  it('prefers a real title over the fallback once there is one', async () => {
+    mockPrisma.conversation.findMany.mockResolvedValue([
+      {
+        id: 'conv_1',
+        title: 'Recent orders',
+        lastTurnAt: new Date(),
+        turns: [{ utterance: 'what did I order recently?' }],
+      },
+    ]);
+
+    expect((await listConversations('user_a'))[0]!.name).toBe('Recent orders');
+  });
+
+  it('shortens a very long first message rather than letting it run', async () => {
+    mockPrisma.conversation.findMany.mockResolvedValue([
+      {
+        id: 'conv_1',
+        title: null,
+        lastTurnAt: new Date(),
+        turns: [{ utterance: 'x'.repeat(200) }],
+      },
+    ]);
+
+    const name = (await listConversations('user_a'))[0]!.name;
+    expect(name.length).toBeLessThanOrEqual(60);
+    expect(name.endsWith('...')).toBe(true);
+  });
+
+  it('asks for only the FIRST turn of each chat', async () => {
+    // The list needs one utterance per chat. Fetching every turn of every
+    // conversation to render a sidebar would grow with the history.
+    mockPrisma.conversation.findMany.mockResolvedValue([]);
+
+    await listConversations('user_a');
+
+    const turns = mockPrisma.conversation.findMany.mock.calls[0]![0].select.turns;
+    expect(turns.take).toBe(1);
+    expect(turns.orderBy).toEqual({ seq: 'asc' });
+  });
+
+  it('survives a chat with no turns at all', async () => {
+    // Should not happen -- rows are created on the first message -- but a
+    // list that throws is worse than one that shows a placeholder.
+    mockPrisma.conversation.findMany.mockResolvedValue([
+      { id: 'conv_1', title: null, lastTurnAt: new Date(), turns: [] },
+    ]);
+
+    expect((await listConversations('user_a'))[0]!.name).toBe('New chat');
+  });
+});
+
+describe('loadConversation', () => {
+  it('returns one the customer owns, turns in order', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv_1',
+      title: null,
+      turns: [
+        {
+          utterance: 'what did I order?',
+          events: [{ v: 1, seq: 0, type: 'message', data: { text: 'ORD-1' } }],
+        },
+      ],
+    });
+
+    const loaded = await loadConversation('user_a', 'conv_1');
+
+    expect(loaded).toEqual({
+      id: 'conv_1',
+      title: null,
+      turns: [
+        {
+          utterance: 'what did I order?',
+          events: [{ v: 1, seq: 0, type: 'message', data: { text: 'ORD-1' } }],
+        },
+      ],
+    });
+
+    const query = mockPrisma.conversation.findFirst.mock.calls[0]![0];
+    expect(query.where).toEqual({ id: 'conv_1', userId: 'user_a' });
+    expect(query.select.turns.orderBy).toEqual({ seq: 'asc' });
+  });
+
+  it('answers null for somebody elses chat', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue(null);
+
+    expect(await loadConversation('user_b', 'conv_1')).toBeNull();
+  });
+});
+
+describe('deleteConversation', () => {
+  it('deletes only a chat this customer owns', async () => {
+    // deleteMany, not delete: delete throws when nothing matches, and a
+    // thrown error is a different answer from "not yours" -- which is
+    // exactly the distinction an enumeration attack is looking for.
+    mockPrisma.conversation.deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deleteConversation('user_a', 'conv_1')).toBe(true);
+    expect(mockPrisma.conversation.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'conv_1', userId: 'user_a' },
+    });
+  });
+
+  it('reports nothing deleted for somebody elses chat', async () => {
+    mockPrisma.conversation.deleteMany.mockResolvedValue({ count: 0 });
+
+    expect(await deleteConversation('user_b', 'conv_1')).toBe(false);
   });
 });
