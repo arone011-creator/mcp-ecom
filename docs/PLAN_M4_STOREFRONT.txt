@@ -576,3 +576,67 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     Phases 2-6 (storage and resume, history UI, titles, memory with a hard
     budget, summarisation) each get their own plan. The roadmap records the
     decisions so none of them is argued twice.
+
+  2026-09-04 -- CHAT PHASE 2: STORAGE AND RESUME (plan
+  docs/superpowers/plans/2026-09-03-chat-phase2-storage-and-resume.md)
+
+    A conversation now survives closing the panel, a refresh, signing out
+    and restarting the browser. Reopening the assistant shows the chat you
+    were last having.
+
+    WHAT CHANGED
+      * Two tables, ONE migration: conversations and conversation_turns.
+        The turn is the unit -- utterance plus the events that answered it
+        -- because that is already the shape the provider holds, so
+        persistence is append-only and hydration is one query.
+        The migration also creates title, summary, summarisedThrough and
+        agentContext, which nothing reads yet. Deliberate: schema changes
+        against a live database are the riskiest step in this roadmap, the
+        data model was settled in full during brainstorming, and four
+        nullable columns now cost less than three more migrations later.
+      * lib/assistant/conversation-store.ts is the ONLY place that touches
+        these tables, and every query in it filters by userId inside the
+        query rather than checking after it. That is structural, not
+        stylistic: it is the M1 cached-order-read mistake.
+      * The bridge accumulates the events it forwards and writes one row
+        when the stream ends, awaited while the response is still open.
+        Stored and forwarded are asserted to be the same events -- a record
+        that disagrees with what was on screen is a second story about what
+        happened. Control frames are withheld from the record exactly as
+        they are from the browser.
+      * The conversation is resolved BEFORE the bearer is minted or the
+        agent is called, so someone else's conversation id costs a 404 and
+        not a model call. It is created lazily on the first message, so
+        opening the panel and changing your mind leaves nothing behind.
+      * GET /api/assistant/conversations/latest takes no parameters at all.
+        null is a normal answer, not a 404: everybody has a first visit.
+      * The provider hydrates on mount and carries the conversation id,
+        adopting it from the x-conversation-id response header. Stored
+        events go through parseEvent -- the same door as live ones.
+
+    Mutation-tested: 12 mutations across the store, the bridge and the
+    provider, all caught.
+
+    HOW THE MIGRATION REACHED PRODUCTION -- read this before the next one.
+    prisma migrate deploy had NEVER run automatically on this project. The
+    web service had no pre-deploy and no custom start command; the
+    db:migrate:deploy script existed and a test asserted it existed, but
+    nothing invoked it, so the schema was presumably applied by hand at
+    some point. Option A was chosen: the web service now has a Railway
+    pre-deploy command, `npm run db:migrate:deploy`. Every future deploy
+    applies pending migrations before the new container takes traffic, and
+    a failed migration blocks the deploy -- which is the correct failure.
+    Deploy a2704c84 (commit fadd93a, 2026-09-04 06:26 UTC) reported
+    "5 migrations found", applied 20260903190000_add_assistant_conversations
+    and nothing else, and reached SUCCESS. So _prisma_migrations WAS
+    already in step with the four earlier migrations -- the drift this
+    change was braced for did not exist. Worth knowing next time.
+
+    KNOWN GAP, ACCEPTED. A browser that disconnects mid-turn hits the
+    stream's cancel(), not done, so that turn is not stored. Persisting
+    there cannot be awaited and would be best-effort at the exact moment
+    the runtime is tearing the handler down. The customer closed the tab
+    and the agent's turn was cancelled with it.
+
+    Phases 3-6 (history list and + button, titles, agent memory,
+    summarisation) each still get their own plan.
