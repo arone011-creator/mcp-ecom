@@ -48,6 +48,7 @@ model User {
   orders   Order[]
   cart     Cart?
   reviews   Review[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -336,4 +337,51 @@ model IdempotencyKey {
   // across different tools without meaning "replay that other thing".
   @@unique([userId, scope, key])
   @@map("idempotency_keys")
+}
+
+/// One assistant conversation, owned by the customer who had it.
+///
+/// `summary` and `summarisedThrough` are written by Phase 6 and `title` by
+/// Phase 4; they exist now so this migration is the only one this roadmap
+/// runs against a live database.
+model Conversation {
+  id                String   @id @default(cuid())
+  userId            String
+  title             String?
+  summary           String?
+  summarisedThrough Int      @default(0)
+  /// When the last turn landed. The history list orders by this, not by
+  /// createdAt -- a conversation you replied to today belongs at the top.
+  lastTurnAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  turns ConversationTurn[]
+
+  @@index([userId, lastTurnAt])
+  @@map("conversations")
+}
+
+/// One exchange: what the customer said, and everything the assistant did
+/// about it.
+///
+/// `events` is the v1 event stream the panel renders. `agentContext` is the
+/// opaque model-message blob Phase 5 replays; the storefront never parses it.
+/// They deliberately overlap -- the event contract is frozen and display-only,
+/// and deriving one from the other would be a third implementation of a
+/// mapping that already has two.
+model ConversationTurn {
+  id             String   @id @default(cuid())
+  conversationId String
+  seq            Int
+  utterance      String
+  events         Json
+  agentContext   Json?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, seq])
+  @@map("conversation_turns")
 }
