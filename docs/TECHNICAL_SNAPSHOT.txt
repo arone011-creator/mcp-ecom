@@ -168,7 +168,10 @@ Seventeen tables. The ones that carry the business:
     Inventory                    quantity, reserved, available per product
     Cart / CartItem              One cart per user, and the lines in it
     Order / OrderItem            Placed orders, and a frozen copy of what was
-                                 bought
+                                 bought. Two nullable simulation columns
+                                 (added 2026-09-05) drive a demo lifecycle:
+                                 NULL means the order never advances, which
+                                 is every order placed before that date
     Review                       Customer reviews - ATTACKER-CONTROLLABLE TEXT
     IdempotencyKey               Makes retried writes safe (added in M3)
     Account / Session /          NextAuth's own tables
@@ -563,6 +566,22 @@ discovers it the hard way.
 
   * ALL THREE SERVICES REBUILD ON ANY COMMIT. Railway watchPatterns are
     unset, so a docs change redeploys the agent.
+
+  * THE ORDER LIFECYCLE IS SIMULATED, one step a minute, and advances
+    only when something READS the order -- there is no scheduler. Nobody
+    can observe a stale status without reading it, so the two are
+    indistinguishable in practice, but a background report querying the
+    database directly would see stale rows.
+
+  * AN APPROVAL CARD THAT CANNOT LOAD ITS DETAILS OFFERS NO WAY OUT. It
+    refuses to describe the action, which is correct, but there is no
+    Decline button on it -- so the turn waits for the five-minute
+    deadline. Found 2026-09-05.
+
+  * THE AGENT CANNOT RESOLVE AN ORDER NUMBER TO AN ORDER ID before asking
+    for approval, so "cancel ORD-123" reaches the approval route with a
+    number where an id is expected and the card cannot load. Found
+    2026-09-05.
 
   * .env.example IS STALE - it advertises Stripe variables that nothing reads.
 

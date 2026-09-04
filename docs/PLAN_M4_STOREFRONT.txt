@@ -1067,3 +1067,121 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     press) and one through the whole panel, with a mutation confirming
     they bite. Worth provoking properly the next time a tool genuinely
     breaks.
+
+  2026-09-05 -- SIMULATED ORDER LIFECYCLE, AND A LOGOUT (design
+  docs/superpowers/specs/2026-09-05-order-simulation-and-logout-design.md,
+  plan docs/superpowers/plans/2026-09-05-order-simulation-and-logout.md)
+
+    Five of the seven OrderStatus values were unreachable: nothing in the
+    app ever wrote CONFIRMED, PROCESSING, SHIPPED, DELIVERED or REFUNDED,
+    so an order sat on PENDING forever and the four-step tracker could
+    only ever light its first dot. And there was no customer sign-out at
+    all -- only the admin layout linked to NextAuth's default page.
+
+    An order placed from now on advances PENDING -> PROCESSING -> SHIPPED
+    -> DELIVERED, one step a minute, and can be frozen per order.
+
+    NO SCHEDULER. The status is written lazily when something reads the
+    order. Nobody can observe a stale status without reading it, so
+    advancing at read time is indistinguishable from advancing on a
+    timer -- and there is no cron service to keep alive for a demo. The
+    same call the chat roadmap already made, in writing, for compaction.
+
+    PAUSE NEEDS TWO COLUMNS, NOT THREE. Resuming pushes
+    simulationStartedAt forward by the pause duration rather than
+    accumulating a debt. Elapsed time then has exactly one
+    representation instead of two that can disagree.
+
+    EXISTING ORDERS ARE INERT BY ABSENCE OF DATA. The migration is
+    additive with no backfill, so every row that already existed keeps
+    simulationStartedAt = NULL and can never advance. That is the "nothing
+    lurches" decision enforced by the shape of the data rather than by a
+    condition somebody has to remember to write.
+
+    THE PLAN CORRECTED THE DESIGN, AND THAT MATTERED. The design said the
+    advance belongs "in the query layer, so every reader gets it". There
+    are FOUR order read paths and two of them -- both /api/v1 routes --
+    query Prisma directly and deliberately, because getUserOrders takes a
+    user id it trusts and was once wrapped in unstable_cache. Following
+    the design literally would have shipped a feature that worked on the
+    web pages and silently did not for the agent. It is one module called
+    from four explicit sites; a Prisma middleware would have covered all
+    four by hiding a write inside every query in the application.
+
+    NOT UNDER /api/v1. The pause and resume routes are cookie-
+    authenticated and live outside the versioned API, because that
+    surface is documented as the entire set of capabilities the AI layer
+    may use and freezing a demo clock is not one of them. The agent
+    carries a bearer and no cookie, so it structurally cannot reach them.
+
+    A CANCELLED ORDER STOPPED CLAIMING TO BE ON ITS WAY. It used to render
+    identically to a pending one -- first dot green, three grey -- because
+    CANCELLED appears in no `completed` list.
+
+    Mutation-tested: 12, and the twelfth SURVIVED. Removing the branch
+    that stops the tracker drawing four dots for a cancelled order broke
+    no test, because the order page is a server component with no
+    harness. Fixed rather than excused: the decision was extracted as
+    isTerminated() and tested directly, and the mutation is now caught.
+    That is the whole value of mutation testing -- a green suite said the
+    branch was covered and it was not.
+
+    ONE FLAKY TEST, WRITTEN BY THIS WORK AND FOUND BY REPEATING THE SUITE.
+    It failed about one run in five. The fixture took Date.now()
+    separately for the start and for the pause, which put elapsed time at
+    exactly 60000ms -- dead on a step boundary -- so when the two calls
+    straddled a millisecond, elapsed became 59999 and the order was
+    suddenly not due. Fixed in the fixture, not by widening a tolerance:
+    the code was right and the test was wrong about time. A single full
+    run would not have caught it; four did.
+
+    VERIFIED LIVE 2026-09-05 on deploy 4a8c1a7, signed in as the demo
+    customer, reading the DOM and the API rather than eyeballing:
+      * THE MIGRATION ACTUALLY RAN -- "Applying migration
+        20260905120000_add_order_simulation_clock ... All migrations have
+        been successfully applied", read out of the deploy log rather
+        than inferred from a green deploy;
+      * EXISTING ORDERS DID NOT MOVE. The PENDING order from 2026-09-04
+        was still PENDING after the deploy and showed no demo panel. This
+        was checked FIRST, because it is the one that touches data that
+        already existed;
+      * a new order showed the demo panel, "Running.", and the
+        cancellation note, and advanced PENDING -> PROCESSING on its own
+        with no interaction;
+      * PAUSE HELD. Paused at PROCESSING, still PROCESSING four minutes
+        later -- three step intervals with nothing happening;
+      * RESUME DID NOT LEAP. Immediately after resuming it was still
+        PROCESSING, not DELIVERED. Had the pause not been given back,
+        elapsed would have been about six minutes and it would have gone
+        straight to the end. It then advanced to SHIPPED thirty seconds
+        later, which is exactly the arithmetic: it was a minute and a half
+        into its clock when paused, and needed thirty more seconds to
+        reach the two-minute step;
+      * the cancelled order now says it was cancelled and is not on its
+        way, and draws no tracker;
+      * the simulation clock never appears in any API response;
+      * sign-out is in the header (icon, with an accessible name) and in
+        the profile's Security tab.
+
+    TWO FINDINGS, NEITHER CAUSED BY THIS WORK, BOTH WORTH FIXING:
+
+      * ASKING THE ASSISTANT TO CANCEL BY ORDER NUMBER FAILS SILENTLY-ISH.
+        The approval route looks up approval.arguments.order_id; the model
+        passed the order NUMBER, which matches no id, so the card answered
+        "the details could not be loaded" and correctly refused to show
+        anything. The card is doing the right thing -- it exists so that
+        the confirmation cannot describe one order while another is
+        cancelled -- but the agent should resolve a number to an id first.
+
+      * AN APPROVAL CARD THAT CANNOT LOAD ITS DETAILS OFFERS NO WAY OUT.
+        There is no Decline button on it, so the turn sits on "Working..."
+        until the five-minute deadline expires. The failure is handled
+        safely -- nothing is changed -- but the customer is stranded, which
+        is the same class of problem M4 Task 6 fixed for failed TOOL calls
+        and did not fix for this.
+
+    NOT VERIFIED LIVE: the assistant's cancel-a-shipped-order failure
+    path, which this feature was supposed to finally make provokable. The
+    attempt hit the order-number finding above and never reached the tool.
+    Worth retrying once that is fixed -- the mechanism for provoking it
+    now exists, which it did not before.
