@@ -1269,7 +1269,27 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     file is indistinguishable in the output from one the tests caught --
     that has cost this project two meaningless results already.
 
-    NOT VERIFIED LIVE YET. Everything above is the local suite, typecheck
-    and build. The countdown reads the browser's clock against a server
-    timestamp, and the one thing no local test can exercise is real skew
-    between the two.
+    VERIFIED LIVE 2026-09-05 on deploy 651d780, signed in as the demo
+    customer, reading the DOM on a timer rather than eyeballing:
+      * a new order showed "Next step in 0:46." and counted down one
+        second per second -- six consecutive samples a second apart gave
+        0:38, 0:37, 0:36, 0:35, 0:34, 0:33;
+      * THE HANDOFF AT ZERO IS WHAT WAS DESIGNED. Sampling twice a second
+        across the transition caught it exactly: 0:01 -> "Updating..."
+        with the status still PENDING -> PROCESSING with the timer reset
+        to 1:00, the whole handoff inside one second. No stuck 0:00, and
+        none of the up-to-fifteen-second lag the poll alone would have
+        given;
+      * PAUSE FROZE THE NUMBER, not just the status. "Paused, with 0:47
+        still to go." was still saying 0:47 twenty-one seconds later --
+        eight samples, no drift;
+      * RESUME DID NOT LEAP. It came back at 0:45 against 0:47 at the
+        pause, the two seconds being the click round-trip, and then ticked
+        down normally. Had the pause not been given back it would have
+        resumed already due;
+      * a DELIVERED order showed the panel with no countdown and no
+        button -- "This order has finished its progression.";
+      * THE PRE-FEATURE ORDER WAS CHECKED FIRST, before anything else,
+        because it is the one touching data that already existed. Still
+        PENDING, still no panel at all. Rewriting the panel's props did
+        not disturb the guarantee that a null clock renders nothing.
