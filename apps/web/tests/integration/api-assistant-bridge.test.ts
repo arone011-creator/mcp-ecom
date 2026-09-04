@@ -14,14 +14,28 @@ jest.mock('next-auth/jwt', () => ({
   getToken: jest.fn(),
 }));
 
+jest.mock('@/lib/assistant/conversation-store', () => ({
+  startConversation: jest.fn(),
+  ownedConversation: jest.fn(),
+  appendTurn: jest.fn(),
+}));
+
 import { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
 import { POST } from '@/app/api/assistant/route';
 import { recallApproval, resetApprovals } from '@/lib/assistant/approvals';
+import {
+  appendTurn,
+  ownedConversation,
+  startConversation,
+} from '@/lib/assistant/conversation-store';
 import { recallTurn } from '@/lib/assistant/turns';
 
 const mockGetToken = getToken as unknown as jest.Mock;
+const mockStart = startConversation as unknown as jest.Mock;
+const mockOwned = ownedConversation as unknown as jest.Mock;
+const mockAppend = appendTurn as unknown as jest.Mock;
 const SIGNED_IN = { sub: 'user_1', email: 'c@example.com', role: 'USER' };
 
 const AGENT_WIRE =
@@ -52,6 +66,9 @@ beforeEach(() => {
   process.env.AGENT_SERVICE_URL = 'https://agent.example.com';
   process.env.AGENT_SERVICE_KEY = 'agent-key';
   mockGetToken.mockReset();
+  mockStart.mockReset().mockResolvedValue('conv_new');
+  mockOwned.mockReset().mockResolvedValue({ id: 'conv_1' });
+  mockAppend.mockReset().mockResolvedValue(undefined);
   resetApprovals();
 });
 
@@ -269,5 +286,108 @@ describe('a dropped connection', () => {
 
     controller.abort();
     expect(passedSignal.aborted).toBe(true);
+  });
+});
+
+describe('POST /api/assistant persistence', () => {
+  it('creates a conversation on the FIRST message, not before', async () => {
+    // A row created when the panel opens would leave an empty chat in the
+    // history list every time somebody clicked and changed their mind.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds();
+
+    await (await POST(ask())).text();
+
+    expect(mockStart).toHaveBeenCalledWith('user_1');
+  });
+
+  it('tells the browser which conversation it is in', async () => {
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds();
+
+    const response = await POST(ask());
+
+    expect(response.headers.get('x-conversation-id')).toBe('conv_new');
+  });
+
+  it('continues an existing conversation instead of starting another', async () => {
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds();
+
+    await (
+      await POST(ask({ utterance: 'and the second?', conversationId: 'conv_1' }))
+    ).text();
+
+    expect(mockOwned).toHaveBeenCalledWith('user_1', 'conv_1');
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv_1' })
+    );
+  });
+
+  it('refuses a conversation belonging to somebody else, before spending anything', async () => {
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    mockOwned.mockResolvedValue(null);
+    const fetchMock = agentResponds();
+    global.fetch = fetchMock;
+
+    const response = await POST(
+      ask({ utterance: 'sneaky', conversationId: 'someone_elses' })
+    );
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('stores exactly the events it forwarded to the browser', async () => {
+    // THE MUST PROVE. What is on screen during the turn and what comes
+    // back after a refresh have to be the same conversation, or the
+    // record is a second story about what happened.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds(
+      'event: control\ndata: {"turn_id":"t1","session_id":"mcp-sess-9"}\n\n' +
+        'event: assistant\ndata: {"v":1,"seq":0,"type":"tool_started","data":{"call_id":"c1","tool":"get_orders","arguments":{}}}\n\n' +
+        'event: assistant\ndata: {"v":1,"seq":1,"type":"tool_completed","data":{"call_id":"c1","tool":"get_orders","ok":true,"result":[]}}\n\n' +
+        'event: assistant\ndata: {"v":1,"seq":2,"type":"message","data":{"text":"You ordered ORD-1."}}\n\n'
+    );
+
+    const forwarded = await (await POST(ask())).text();
+
+    const stored = mockAppend.mock.calls[0]![0].events;
+    expect(stored.map((e: { type: string }) => e.type)).toEqual([
+      'tool_started',
+      'tool_completed',
+      'message',
+    ]);
+
+    // Every stored event was also sent to the browser.
+    for (const event of stored) {
+      expect(forwarded).toContain(JSON.stringify(event));
+    }
+  });
+
+  it('stores the utterance the customer actually typed', async () => {
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds();
+
+    await (await POST(ask({ utterance: '  what did I order?  ' }))).text();
+
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({ utterance: 'what did I order?' })
+    );
+  });
+
+  it('never stores a control frame', async () => {
+    // Control frames carry the agent's MCP session id. Withheld from the
+    // browser and equally not written down.
+    mockGetToken.mockResolvedValue(SIGNED_IN);
+    global.fetch = agentResponds();
+
+    await (await POST(ask())).text();
+
+    const stored = JSON.stringify(mockAppend.mock.calls[0]![0].events);
+    expect(stored).not.toContain('mcp-sess-9');
+    expect(stored).not.toContain('session_id');
   });
 });

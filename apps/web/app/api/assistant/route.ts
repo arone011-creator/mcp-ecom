@@ -27,6 +27,11 @@ import { mintBearer } from '../v1/_lib/mint';
 import { REFRESH_TTL_SECONDS } from '../v1/auth/refresh/route';
 import { SseParser } from '@/lib/assistant/sse';
 import { forgetApprovalsOf, rememberApproval } from '@/lib/assistant/approvals';
+import {
+  appendTurn,
+  ownedConversation,
+  startConversation,
+} from '@/lib/assistant/conversation-store';
 import { forgetTurn, rememberTurn } from '@/lib/assistant/turns';
 
 export const runtime = 'nodejs';
@@ -59,10 +64,29 @@ export async function POST(req: NextRequest) {
   ).trim();
   if (!utterance) return fail(400, 'An utterance is required');
 
+  const asked = (body as { conversationId?: unknown })?.conversationId;
+  const continuing = typeof asked === 'string' && asked.length > 0 ? asked : null;
+
   // Checked after the caller is known but before anything is spent, and
   // the message says nothing about which piece is missing.
   if (!secret || !agentUrl || !agentKey) {
     return fail(500, 'The assistant is not configured');
+  }
+
+  // Resolved before anything is spent. A conversation that is not this
+  // customer's must not cost a model call to refuse.
+  let conversationId: string;
+  if (continuing) {
+    const owned = await ownedConversation(session.sub as string, continuing);
+    // The same answer as one that does not exist: a distinguishable
+    // refusal confirms a stranger's id is real.
+    if (!owned) return fail(404, 'No such conversation');
+    conversationId = owned.id;
+  } else {
+    // LAZILY, on the first message. A row created when the panel opens
+    // would leave an empty chat in the history list every time somebody
+    // clicked and changed their mind.
+    conversationId = await startConversation(session.sub as string);
   }
 
   const bearer = await mintBearer(
@@ -105,6 +129,9 @@ export async function POST(req: NextRequest) {
   // always arrives first. An approval frame is meaningless without it:
   // there would be no session to mint against and no turn to resume.
   let openTurn: { turnId: string; sessionId: string } | null = null;
+  // What the panel is being shown, kept so the same events can be written
+  // down. Stored and forwarded must be one story about the turn, not two.
+  const forwarded: unknown[] = [];
 
   function rememberIfApproval(data: string): void {
     if (!openTurn) return;
@@ -146,6 +173,17 @@ export async function POST(req: NextRequest) {
       if (done) {
         // The conversation is over; nothing may approve it now.
         endTurns();
+        // Awaited here, where the response is still open, rather than
+        // fired off afterwards -- work started after a handler returns is
+        // work the runtime is free to discard.
+        try {
+          await appendTurn({ conversationId, utterance, events: forwarded });
+        } catch (error) {
+          // A turn that cannot be written is still a turn that happened.
+          // The customer has read it; failing the stream now would take it
+          // off their screen to report a problem they cannot act on.
+          console.error('Storing an assistant turn failed:', error);
+        }
         controller.close();
         return;
       }
@@ -182,6 +220,12 @@ export async function POST(req: NextRequest) {
           // arguments the token will be bound to. See lib/assistant/
           // approvals.ts for why that round trip is the whole risk.
           rememberIfApproval(item.data);
+          try {
+            forwarded.push(JSON.parse(item.data));
+          } catch {
+            // Unparseable frames are dropped from the record for the same
+            // reason the browser drops them: neither can act on one.
+          }
           controller.enqueue(encoder.encode(frame('assistant', item.data)));
         }
 
@@ -200,6 +244,10 @@ export async function POST(req: NextRequest) {
       'content-type': 'text/event-stream',
       'cache-control': 'no-store',
       connection: 'keep-alive',
+      // How the browser learns which conversation it is in. Not a secret --
+      // it names the customer's own chat, and every route re-checks
+      // ownership -- but not guessable into somebody else's either.
+      'x-conversation-id': conversationId,
       // Nothing between here and the browser may buffer a stream whose
       // whole point is arriving as it happens.
       'x-accel-buffering': 'no',
