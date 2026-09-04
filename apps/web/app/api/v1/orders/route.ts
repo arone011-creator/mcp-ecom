@@ -11,6 +11,7 @@ import prisma from '@/lib/prisma';
 import { requireApiUser } from '../_lib/session';
 import { ok, fail } from '../_lib/respond';
 import { publicOrders } from '../_lib/order-view';
+import { advanceAllDue } from '@/server/orders/advance-simulation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,12 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return ok({ orders: publicOrders(orders as Record<string, unknown>[]) });
+    // The agent reads its customer's orders through here. A status that
+    // only advanced when a human opened a web page would make the
+    // assistant describe a different shop from the one on screen.
+    const advanced = await advanceAllDue(orders);
+
+    return ok({ orders: publicOrders(advanced as Record<string, unknown>[]) });
   } catch (error) {
     console.error('GET /api/v1/orders failed:', error);
     return fail(500, 'Failed to load orders');

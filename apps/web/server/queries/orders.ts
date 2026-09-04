@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createCachedFunction, CACHE_TAGS } from '@/lib/cache';
 import { getCurrentUser } from '@/lib/roles';
 import { hasPermission, PERMISSIONS } from '@/lib/roles';
+import { advanceAllDue, advanceIfDue } from '@/server/orders/advance-simulation';
 
 // Alias for getOrder. The previous signature took a `userId` it never
 // used, which read as though callers could pass an owner to check
@@ -67,7 +68,7 @@ export const getOrders = async (page = 1, limit = 20, status?: string) => {
   ]);
 
   return {
-    orders,
+    orders: await advanceAllDue(orders),
     pagination: {
       page,
       limit,
@@ -95,7 +96,7 @@ export const getOrder = async (orderId: string) => {
   // findFirst, not findUnique: `userId` is not part of a unique
   // constraint, so the ownership filter does not belong in a
   // findUnique where clause.
-  return await prisma.order.findFirst({
+  const order = await prisma.order.findFirst({
     where,
     include: {
       orderItems: {
@@ -121,6 +122,11 @@ export const getOrder = async (orderId: string) => {
       },
     },
   });
+
+  // Advanced on the way out, so the page renders what the database now
+  // says rather than what it said a moment ago. See
+  // server/orders/advance-simulation.ts for why a read writes at all.
+  return order ? await advanceIfDue(order) : null;
 };
 
 export const getUserOrders = createCachedFunction(

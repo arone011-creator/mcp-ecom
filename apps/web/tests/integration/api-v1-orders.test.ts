@@ -7,7 +7,7 @@
 // dropping the ownership filter.
 
 const mockPrisma = {
-  order: { findMany: jest.fn(), findFirst: jest.fn() },
+  order: { findMany: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
 };
 jest.mock('@/lib/prisma', () => ({ __esModule: true, default: mockPrisma }));
 
@@ -297,5 +297,87 @@ describe('POST /api/v1/orders/[id]/cancel', () => {
 
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain('postgres://');
+  });
+});
+
+describe('the simulated lifecycle, through the API the agent reads', () => {
+  // The agent reads its customer's orders through these routes. A status
+  // that only advanced when a human opened a web page would make the
+  // assistant describe a different shop from the one on screen.
+
+  /** An order whose clock started long enough ago to be due DELIVERED. */
+  function running(overrides: Record<string, unknown> = {}) {
+    return order({
+      status: 'PENDING',
+      simulationStartedAt: new Date(Date.now() - 10 * 60_000),
+      simulationPausedAt: null,
+      shippedAt: null,
+      deliveredAt: null,
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    mockPrisma.order.updateMany.mockReset().mockResolvedValue({ count: 1 });
+  });
+
+  it('advances a due order before answering the list', async () => {
+    mockUser.mockResolvedValue(USER_A);
+    mockPrisma.order.findMany.mockResolvedValue([running()]);
+
+    const body = await (await listOrders(req('/api/v1/orders'))).json();
+
+    expect(body.data.orders[0].status).toBe('DELIVERED');
+    expect(mockPrisma.order.updateMany).toHaveBeenCalled();
+  });
+
+  it('advances a due order before answering one by id', async () => {
+    mockUser.mockResolvedValue(USER_A);
+    mockPrisma.order.findFirst.mockResolvedValue(running());
+
+    const response = await getOrder(req('/api/v1/orders/order_1'), {
+      params: Promise.resolve({ id: 'order_1' }),
+    });
+
+    expect((await response.json()).data.status).toBe('DELIVERED');
+  });
+
+  it('leaves an order with no clock exactly as it is', async () => {
+    // THE MUST PROVE, on the path the agent uses. Every order that
+    // predates this feature has a null clock.
+    mockUser.mockResolvedValue(USER_A);
+    mockPrisma.order.findMany.mockResolvedValue([
+      running({ simulationStartedAt: null }),
+    ]);
+
+    const body = await (await listOrders(req('/api/v1/orders'))).json();
+
+    expect(body.data.orders[0].status).toBe('PENDING');
+    expect(mockPrisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('leaves a paused order exactly as it is', async () => {
+    mockUser.mockResolvedValue(USER_A);
+    mockPrisma.order.findMany.mockResolvedValue([
+      running({ simulationPausedAt: new Date(Date.now() - 9 * 60_000) }),
+    ]);
+
+    const body = await (await listOrders(req('/api/v1/orders'))).json();
+
+    // Paused nine minutes ago, one minute after its clock started: due
+    // PROCESSING at the instant of the pause, and nothing since.
+    expect(body.data.orders[0].status).toBe('PROCESSING');
+  });
+
+  it('never exposes the simulation clock to the caller', async () => {
+    // publicOrder allowlists fields. The clock is an implementation
+    // detail of a demo, not part of the API's shape.
+    mockUser.mockResolvedValue(USER_A);
+    mockPrisma.order.findMany.mockResolvedValue([running()]);
+
+    const text = await (await listOrders(req('/api/v1/orders'))).text();
+
+    expect(text).not.toContain('simulationStartedAt');
+    expect(text).not.toContain('simulationPausedAt');
   });
 });

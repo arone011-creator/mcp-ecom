@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma';
 import { requireApiUser } from '../../_lib/session';
 import { ok, fail } from '../../_lib/respond';
 import { publicOrder } from '../../_lib/order-view';
+import { advanceIfDue } from '@/server/orders/advance-simulation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,9 @@ export async function GET(
     // attack needs.
     if (!order) return fail(404, 'Order not found');
 
-    return ok(publicOrder(order as Record<string, unknown>));
+    const advanced = await advanceIfDue(order);
+
+    return ok(publicOrder(advanced as Record<string, unknown>));
   } catch (error) {
     console.error('GET /api/v1/orders/[id] failed:', error);
     return fail(500, 'Failed to load order');
