@@ -857,3 +857,74 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     estimated tokens, which is many paid turns; it is covered by unit
     tests including a hundred-turn case, and by a bridge test that sets
     the budget to 40 and watches the older turn fall off the request.
+
+  2026-09-04 -- CHAT PHASE 4: TITLES (plan
+  docs/superpowers/plans/2026-09-04-chat-phase4-titles.md)
+
+    A chat names itself after its first exchange. The history list reads
+    as a list of subjects rather than four rows of the same question.
+
+    THE REQUEST CARRIES NO BODY, AND THAT IS THE DESIGN. The obvious
+    version has the browser POST the exchange it just watched. That would
+    make the endpoint two things it must not be: a way to put
+    attacker-chosen text in front of the model on this project's account,
+    and a way to write a near-arbitrary string into a row rendered on
+    every future page load. The route reads turn zero back out of the
+    database instead -- one query, and the whole class is gone.
+
+    IDEMPOTENT IN ONE QUERY, NOT A READ THEN A WRITE. nameConversation is
+    a single updateMany with `title: null` in the where clause, so "still
+    unnamed" and "yours" are the same atomic condition. A request fired
+    twice -- which the browser is allowed to do here -- matches zero rows
+    the second time rather than racing a read.
+
+    WHAT CHANGED
+      * agent/titles.py and POST /title in the agent: one cheap model
+        call over BOTH halves of the first exchange, because the subject
+        is often not in the question ("and the second one?" names
+        nothing). No tools, no MCP session, no customer bearer -- naming
+        is a text task, and giving this endpoint tools would put a second,
+        quieter path to the customer's orders beside the one the approval
+        design guards.
+      * clean_title: no URLs, no control characters, one line, capped at
+        60 -- the same width the fallback truncates at. None on anything
+        doubtful, because the fallback is the customer's own words and
+        beats a mangled model answer.
+      * conversation-store gained firstExchange and nameConversation.
+      * POST /api/assistant/conversations/{id}/title.
+      * The provider asks once, after turn one, and ignores the outcome.
+
+    NOTHING IS EVER A 500. Every failure -- agent down, agent slow, agent
+    answering nonsense -- is a 200 with a null title and an untouched row.
+    A chat always already has a usable name, so a naming failure is an
+    answer, not an error the browser has to handle.
+
+    EXISTING CHATS ARE DELIBERATELY NOT BACKFILLED. A chat asks for a name
+    after its FIRST turn, so the ones already in the account keep their
+    fallbacks forever. Backfilling would spend model tokens on old rows to
+    change a string that already reads acceptably.
+
+    Mutation-tested: 7, all caught -- the URL strip, both halves of the
+    updateMany where clause, the already-named short circuit, the
+    non-string guard, and both provider guards (once only, and not on a
+    turn that produced nothing).
+
+    ONE PROCESS MISTAKE WORTH RECORDING. A `git checkout` run to revert a
+    mutation reverted an UNCOMMITTED implementation along with it, so the
+    next mutation ran against code where the feature was simply absent and
+    "3 tests failed" meant nothing. Committing before mutating is not
+    tidiness; without it the mutation result is unreadable.
+
+    VERIFIED LIVE 2026-09-04 on web deploy 2d9fd38 against agent deploy
+    6ca2050 (sha 6ca2050bc1d4 from /health), signed in as the demo
+    customer with window.fetch wrapped:
+      * "do you sell any laptops?" produced the chat name "Available
+        laptops for sale" -- model-written, not the question verbatim;
+      * exactly ONE POST .../title was issued for that chat;
+      * a SECOND turn in the same chat issued no further title request
+        (two bridge turns, one title request) and the name did not change;
+      * the five pre-existing chats still show their fallback names.
+
+    NOT VERIFIED LIVE: the failure paths. Taking the agent down to watch
+    a chat keep its fallback is not worth an outage; four separate
+    failure paths are covered by route tests.
