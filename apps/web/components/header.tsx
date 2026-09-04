@@ -13,6 +13,7 @@ import { ShoppingCart, Search, User } from 'lucide-react';
 import { getCurrentUser } from '@/lib/roles';
 import { getCartItemCount } from '@/server/queries/cart';
 import { Button } from '@/components/ui/button';
+import { SignOutButton } from '@/components/sign-out-button';
 
 export async function Header() {
   // getCartItemCount is a single read-only aggregate. The obvious
@@ -84,6 +85,10 @@ export async function Header() {
                   <User className="h-5 w-5" />
                 </Link>
               </Button>
+              {/* Where people actually look for it. The profile page has
+                  one too, but a logout findable only inside a tab is a
+                  logout most people never find. */}
+              <SignOutButton iconOnly />
             </>
           ) : (
             <Button asChild size="sm">

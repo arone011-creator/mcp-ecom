@@ -933,3 +933,25 @@ describe('a change the rest of the site can see', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 });
+
+describe('after signing out', () => {
+  it('holds no conversation when the customer is no longer signed in', async () => {
+    // "The previous customer's conversation is still on screen" is exactly
+    // the kind of thing nobody checks. Signing out navigates, which
+    // remounts this provider; its mount request then 401s, and it must
+    // come up empty rather than showing whatever it had.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: { get: () => null },
+      json: async () => ({ error: 'Authentication required' }),
+    } as unknown as Response);
+
+    renderProbe();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('idle')
+    );
+    expect(screen.getByTestId('text')).toHaveTextContent('');
+  });
+});

@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth';
 import { ProfileForm } from '@/components/profile-form';
 import { AddressBook } from '@/components/address-book';
 import { PasswordChangeForm } from '@/components/password-change-form';
+import { SignOutButton } from '@/components/sign-out-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -81,6 +82,15 @@ export default async function ProfilePage() {
           </div>
           <Separator />
           <PasswordChangeForm />
+
+          <Separator />
+          <div>
+            <h4 className="text-sm font-medium">Sign out</h4>
+            <p className="mb-3 mt-1 text-sm text-muted-foreground">
+              End this session on this device.
+            </p>
+            <SignOutButton />
+          </div>
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">
