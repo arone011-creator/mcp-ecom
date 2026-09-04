@@ -1056,17 +1056,27 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
         MANUAL REFRESH and no navigation. Read off the anchor's
         aria-label before and after, not from the panel.
 
-    NOT VERIFIED LIVE: the failure path. Three attempts to provoke a real
-    tool failure all failed to produce one, because the agent is better
-    behaved than the test needed it to be -- removing a non-existent cart
-    line is an idempotent success at the API, and asked for 99999
-    laptops it checked inventory and declined rather than attempting the
-    add. Rather than spend further model calls hunting for an error, it
-    is left covered by tests: seven on the chip (including the inverse --
-    a working call offers nothing, so there is no state with nothing to
-    press) and one through the whole panel, with a mutation confirming
-    they bite. Worth provoking properly the next time a tool genuinely
-    breaks.
+    THE FAILURE PATH WAS NOT PROVOKED ON THE DAY, AND WAS THE NEXT ONE.
+    Three attempts on 2026-09-04 produced no failure at all, because the
+    agent is better behaved than the test needed it to be: removing a
+    non-existent cart line is an idempotent success at the API, and asked
+    for 99999 laptops it checked inventory and declined rather than
+    attempting the add.
+
+    It was closed on 2026-09-05, by accident, while verifying the order
+    simulation. An approval request left unanswered hit its five-minute
+    deadline, and the panel rendered exactly what this task built:
+
+        Cancelling an order - could not be completed
+        The approval request expired before anyone answered it.
+        Nothing was sent.
+        [ Try again ]  [ Dismiss ]
+
+    A red chip carrying the storefront's own message, and two ways
+    forward. The MUST PROVE -- "a failed tool call produces a visible
+    failure with a way forward, not a stalled spinner" -- is verified
+    live. Worth noting HOW: not by any scenario anyone planned, but by
+    leaving something alone until it timed out.
 
   2026-09-05 -- SIMULATED ORDER LIFECYCLE, AND A LOGOUT (design
   docs/superpowers/specs/2026-09-05-order-simulation-and-logout-design.md,
@@ -1180,8 +1190,13 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
         is the same class of problem M4 Task 6 fixed for failed TOOL calls
         and did not fix for this.
 
-    NOT VERIFIED LIVE: the assistant's cancel-a-shipped-order failure
-    path, which this feature was supposed to finally make provokable. The
-    attempt hit the order-number finding above and never reached the tool.
-    Worth retrying once that is fixed -- the mechanism for provoking it
-    now exists, which it did not before.
+    THE CANCEL-A-SHIPPED-ORDER PATH WAS NOT REACHED -- the attempt hit
+    the order-number finding above and never got to the tool. Worth
+    retrying once that is fixed.
+
+    BUT M4 TASK 6's UNVERIFIED FAILURE PATH GOT CLOSED ANYWAY, by that
+    same approval being left to expire. The panel rendered the red chip,
+    the storefront's own message ("The approval request expired before
+    anyone answered it. Nothing was sent.") and both Try again and
+    Dismiss. That MUST PROVE is now verified live, and Task 6's record
+    above has been corrected to say so rather than left standing.
