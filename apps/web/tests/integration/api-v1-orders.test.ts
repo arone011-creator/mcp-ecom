@@ -305,16 +305,37 @@ describe('the simulated lifecycle, through the API the agent reads', () => {
   // that only advanced when a human opened a web page would make the
   // assistant describe a different shop from the one on screen.
 
-  /** An order whose clock started long enough ago to be due DELIVERED. */
-  function running(overrides: Record<string, unknown> = {}) {
+  /**
+   * An order whose clock started long enough ago to be due DELIVERED.
+   *
+   * ONE `base`, not a fresh Date.now() per field. The first version took
+   * the current time separately for the start and for the pause, which
+   * put elapsed time at exactly 60000ms -- dead on a step boundary. When
+   * the two calls straddled a millisecond, elapsed became 59999 and the
+   * order was suddenly not due, so the suite failed about one run in
+   * five. A fixture on a boundary is a fixture that flakes.
+   */
+  function running(
+    overrides: Record<string, unknown> = {},
+    base = Date.now()
+  ) {
     return order({
       status: 'PENDING',
-      simulationStartedAt: new Date(Date.now() - 10 * 60_000),
+      simulationStartedAt: new Date(base - 10 * 60_000),
       simulationPausedAt: null,
       shippedAt: null,
       deliveredAt: null,
       ...overrides,
     });
+  }
+
+  /** A paused order, frozen `minutes` into its own clock. */
+  function pausedAfter(minutes: number) {
+    const base = Date.now();
+    return running(
+      { simulationPausedAt: new Date(base - (10 - minutes) * 60_000) },
+      base
+    );
   }
 
   beforeEach(() => {
@@ -358,14 +379,12 @@ describe('the simulated lifecycle, through the API the agent reads', () => {
 
   it('leaves a paused order exactly as it is', async () => {
     mockUser.mockResolvedValue(USER_A);
-    mockPrisma.order.findMany.mockResolvedValue([
-      running({ simulationPausedAt: new Date(Date.now() - 9 * 60_000) }),
-    ]);
+    // Frozen a minute and a half in: due PROCESSING at the instant of the
+    // pause, and nothing since, however long ago that was.
+    mockPrisma.order.findMany.mockResolvedValue([pausedAfter(1.5)]);
 
     const body = await (await listOrders(req('/api/v1/orders'))).json();
 
-    // Paused nine minutes ago, one minute after its clock started: due
-    // PROCESSING at the instant of the pause, and nothing since.
     expect(body.data.orders[0].status).toBe('PROCESSING');
   });
 
