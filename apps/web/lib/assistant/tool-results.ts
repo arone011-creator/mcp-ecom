@@ -72,15 +72,23 @@ function count(value: unknown): number {
 /**
  * An image url, or null.
  *
- * ONLY http(s). This url comes out of product data an admin can edit, and
- * a `javascript:` or `data:` url in an <img src> is a rendering bug with
- * teeth. An allowlist of two schemes, not a search for bad ones.
+ * AN ALLOWLIST OF TWO FORMS, not a search for bad ones. This url comes
+ * out of product data an admin can edit, and a `javascript:` or `data:`
+ * url in an <img src> is a rendering bug with teeth.
+ *
+ *   - an absolute http(s) url;
+ *   - a site-relative path, which is what the seeded catalogue actually
+ *     uses ("/images/products/macbook-air-m2.svg"). A single leading
+ *     slash only: "//evil.example.com" is protocol-relative and points
+ *     off this origin, which is the whole thing being guarded against.
  */
 function imageUrl(value: unknown): string | null {
   const url = str(value);
   if (!url) return null;
 
-  return /^https?:\/\//i.test(url) ? url : null;
+  if (/^https?:\/\//i.test(url)) return url;
+
+  return url.startsWith('/') && !url.startsWith('//') ? url : null;
 }
 
 function productCard(raw: unknown): ProductCard | null {
@@ -164,7 +172,14 @@ function cartCard(raw: unknown): ResultCard | null {
 export function describeResult(tool: string, result: unknown): ResultCard | null {
   switch (tool) {
     case 'search_products': {
-      const products = (Array.isArray(result) ? result : [])
+      // AN ENVELOPE, NOT AN ARRAY: {products, pagination}. Verified
+      // against the deployed app -- the first version of this read the
+      // result as a bare list and rendered nothing at all, because a
+      // fixture invented for this one tool happened to be wrong.
+      const listed = isRecord(result) && Array.isArray(result.products)
+        ? result.products
+        : [];
+      const products = listed
         .map(productCard)
         .filter((card): card is ProductCard => card !== null);
 
@@ -186,8 +201,12 @@ export function describeResult(tool: string, result: unknown): ResultCard | null
 
     // One order and a list of one are the same card model, so the
     // component has one shape to render rather than two.
-    case 'get_order':
-    case 'cancel_order': {
+    //
+    // cancel_order is DELIBERATELY ABSENT. It returns the raw response of
+    // POST /cancel, whose shape has not been observed here, and a guess
+    // that renders a card is worse than the chip alone -- which is what
+    // an unmapped tool already gets.
+    case 'get_order': {
       const card = orderCard(result);
       return card ? { kind: 'orders', orders: [card] } : null;
     }
