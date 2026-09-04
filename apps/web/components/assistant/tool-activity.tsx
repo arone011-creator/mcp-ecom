@@ -14,27 +14,9 @@
 
 import type { ToolActivity as Activity } from '@/lib/assistant/events';
 
+import { toolLabel } from '@/lib/assistant/tool-labels';
+
 import { ApprovalCard } from './approval-card';
-
-// Customer-facing wording. The tool's own name is an implementation
-// detail, and "get_orders" is not something to show a shopper.
-const LABELS: Record<string, string> = {
-  search_products: 'Searching products',
-  get_product: 'Looking up a product',
-  check_inventory: 'Checking stock',
-  get_orders: 'Looking up your orders',
-  get_order: 'Opening an order',
-  get_cart: 'Checking your cart',
-  add_to_cart: 'Adding to your cart',
-  remove_from_cart: 'Removing from your cart',
-  cancel_order: 'Cancelling an order',
-};
-
-function label(tool: string): string {
-  // An unfamiliar tool is shown honestly rather than hidden: the agent
-  // gaining a capability nobody labelled should be visible, not silent.
-  return LABELS[tool] ?? tool.replace(/_/g, ' ');
-}
 
 function state(activity: Activity): { text: string; className: string } {
   if (activity.ok === undefined) {
@@ -73,7 +55,7 @@ export function ToolActivityChip({ activity }: { activity: Activity }) {
 
   return (
     <div className={`rounded border px-2 py-1 text-xs ${shown.className}`}>
-      <span className="font-medium">{label(activity.tool)}</span>
+      <span className="font-medium">{toolLabel(activity.tool)}</span>
       <span> - {shown.text}</span>
       {activity.ok === false && activity.error ? (
         // The storefront's own message, passed through every layer
