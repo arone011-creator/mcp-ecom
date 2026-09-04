@@ -695,3 +695,164 @@ describe('the panel header', () => {
     ).toBeDisabled();
   });
 });
+
+describe('rich results and progress', () => {
+  const ORDER = {
+    id: 'o1',
+    orderNumber: 'ORD-42',
+    status: 'CANCELLED',
+    total: '1089.98',
+    createdAt: '2026-09-03T17:59:48.711Z',
+    orderItems: [{ productName: 'iPhone 15 Pro', quantity: 1, price: '999.99' }],
+  };
+
+  function turn(...frames: string[]) {
+    return frames.join('');
+  }
+
+  it('shows an order card beneath the chip that produced it', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        turn(
+          event(0, 'tool_started', { call_id: 'c1', tool: 'get_orders', arguments: {} }),
+          event(1, 'tool_completed', {
+            call_id: 'c1',
+            tool: 'get_orders',
+            ok: true,
+            result: [ORDER],
+          }),
+          event(2, 'message', { text: 'Here they are.' })
+        )
+      )
+    );
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() => expect(screen.getByText(/ORD-42/)).toBeInTheDocument());
+    // And the assistant's own sentence is still there: the card shows the
+    // data, the sentence answers the question.
+    expect(screen.getByText('Here they are.')).toBeInTheDocument();
+  });
+
+  it('shows no card for a tool with no card model', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        turn(
+          event(0, 'tool_started', {
+            call_id: 'c1',
+            tool: 'check_inventory',
+            arguments: {},
+          }),
+          event(1, 'tool_completed', {
+            call_id: 'c1',
+            tool: 'check_inventory',
+            ok: true,
+            result: { inStock: true },
+          }),
+          event(2, 'message', { text: 'It is in stock.' })
+        )
+      )
+    );
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByText('It is in stock.')).toBeInTheDocument()
+    );
+    expect(screen.getByText('Checking stock')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Orders')).toBeNull();
+    expect(screen.queryByLabelText('Products found')).toBeNull();
+  });
+
+  it('shows the steps of a two-tool turn', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        turn(
+          event(0, 'tool_started', { call_id: 'c1', tool: 'get_orders', arguments: {} }),
+          event(1, 'tool_completed', {
+            call_id: 'c1',
+            tool: 'get_orders',
+            ok: true,
+            result: [],
+          }),
+          event(2, 'tool_started', { call_id: 'c2', tool: 'get_cart', arguments: {} }),
+          event(3, 'tool_completed', {
+            call_id: 'c2',
+            tool: 'get_cart',
+            ok: true,
+            result: { itemCount: 0, subtotal: '0.00', items: [] },
+          }),
+          event(4, 'message', { text: 'Done.' })
+        )
+      )
+    );
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() => expect(screen.getByText(/2 of 2 done/)).toBeInTheDocument());
+  });
+
+  it('shows no steps for a one-tool turn', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        turn(
+          event(0, 'tool_started', { call_id: 'c1', tool: 'get_orders', arguments: {} }),
+          event(1, 'tool_completed', {
+            call_id: 'c1',
+            tool: 'get_orders',
+            ok: true,
+            result: [],
+          }),
+          event(2, 'message', { text: 'Done.' })
+        )
+      )
+    );
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() => expect(screen.getByText('Done.')).toBeInTheDocument());
+    expect(screen.queryByText(/of 1 done/)).toBeNull();
+  });
+
+  it('offers a way forward when a tool fails, and hides it once dismissed', async () => {
+    // THE MUST PROVE, through the whole panel rather than the chip alone.
+    global.fetch = jest.fn().mockResolvedValue(
+      streamOf(
+        turn(
+          event(0, 'tool_started', {
+            call_id: 'c1',
+            tool: 'cancel_order',
+            arguments: {},
+          }),
+          event(1, 'tool_completed', {
+            call_id: 'c1',
+            tool: 'cancel_order',
+            ok: false,
+            error: 'That order has already been cancelled.',
+          }),
+          event(2, 'message', { text: 'I could not do that.' })
+        )
+      )
+    );
+    renderWidget();
+    await open();
+    await ask();
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    });
+
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    // Dismissing hides a notice; it does not edit the record. The
+    // assistant's own sentence about the failure stays.
+    expect(screen.getByText('I could not do that.')).toBeInTheDocument();
+  });
+});

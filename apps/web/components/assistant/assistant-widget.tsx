@@ -18,6 +18,9 @@ import { AssistantText } from './assistant-text';
 import { ConversationList } from './conversation-list';
 import { useAssistant } from './assistant-provider';
 import { ToolActivityChip } from './tool-activity';
+import { PlanSteps } from './plan-steps';
+import { ResultCards } from './result-cards';
+import { describeResult } from '@/lib/assistant/tool-results';
 
 /**
  * The breathing room left above the newest question when it is scrolled
@@ -29,11 +32,16 @@ const TOP_GAP = 12;
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [showingHistory, setShowingHistory] = useState(false);
+  // Which failure notices the customer has waved away. LOCAL: it is about
+  // this rendering and nothing outside it needs to know -- the same call
+  // ConversationList makes about which row is armed for deletion.
+  const [dismissed, setDismissed] = useState<Record<string, true>>({});
   const [draft, setDraft] = useState('');
   const {
     transcript,
     status,
     send,
+    retry,
     conversations,
     conversationId,
     newChat,
@@ -202,6 +210,14 @@ export function AssistantWidget() {
                 {entry.utterance}
               </p>
 
+              {/* Only for the turn in progress. A plan for a finished
+                  turn from last week is history, not progress. */}
+              {newest ? (
+                <div className="max-w-[85%] self-start">
+                  <PlanSteps tools={entry.conversation.tools} />
+                </div>
+              ) : null}
+
               {entry.conversation.timeline.map((item, itemIndex) => {
                 if (item.kind === 'text') {
                   return (
@@ -221,11 +237,39 @@ export function AssistantWidget() {
                   // The timeline names a tool; `tools` says what became of
                   // it. A timeline entry with no matching activity would
                   // mean the reducer disagreed with itself.
-                  return activity ? (
+                  if (!activity) return null;
+                  // Waved away. The turn is unchanged and still stored --
+                  // this hides a notice, it does not edit the record.
+                  if (activity.ok === false && dismissed[activity.call_id]) {
+                    return null;
+                  }
+
+                  // Rendered from the tool's own structured answer, never
+                  // from the model's prose -- and only for a call that
+                  // succeeded, because a failed call's result is an error
+                  // message, not data.
+                  const card =
+                    activity.ok === true
+                      ? describeResult(activity.tool, activity.result)
+                      : null;
+
+                  return (
                     <div key={itemIndex} className="max-w-[85%] self-start">
-                      <ToolActivityChip activity={activity} />
+                      <ToolActivityChip
+                        activity={activity}
+                        // Offered on the NEWEST turn only. A transcript
+                        // from last week shows its failures without
+                        // inviting the customer to re-run them.
+                        onRetry={newest ? retry : undefined}
+                        onDismiss={
+                          newest
+                            ? () => setDismissed((was) => ({ ...was, [activity.call_id]: true }))
+                            : undefined
+                        }
+                      />
+                      {card ? <ResultCards card={card} /> : null}
                     </div>
-                  ) : null;
+                  );
                 }
 
                 return (
