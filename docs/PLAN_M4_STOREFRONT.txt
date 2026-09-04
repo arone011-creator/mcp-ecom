@@ -656,3 +656,79 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
 
     Phases 3-6 (history list and + button, titles, agent memory,
     summarisation) each still get their own plan.
+
+  2026-09-04 -- CHAT PHASE 3: HISTORY UI (plan
+  docs/superpowers/plans/2026-09-04-chat-phase3-history-ui.md)
+
+    The panel has a + and a history button. The history lists every past
+    chat by name and age, opens any of them, and deletes one behind a
+    second deliberate click.
+
+    WHAT CHANGED
+      * lib/assistant/relative-time.ts -- "just now", "5m ago", "14 Aug".
+        `now` is a parameter, so the tests are about the function rather
+        than about a mocked clock, and dates are built by hand rather than
+        through toLocaleDateString so CI does not disagree with a laptop.
+      * Three more queries in conversation-store: listConversations,
+        loadConversation, deleteConversation. The list fetches ONE turn per
+        chat, not all of them. Delete uses deleteMany rather than delete,
+        because delete throws when nothing matches and a thrown error is
+        observably different from "not yours".
+      * GET /api/assistant/conversations, and GET + DELETE on
+        /conversations/[id]. Both handlers on [id] answer the SAME 404 for
+        a chat that is not yours and one that does not exist.
+      * The provider gained newChat, openConversation, deleteConversation
+        and the list. newChat clears local state and STORES NOTHING.
+      * components/assistant/conversation-list.tsx -- presentational, owning
+        one piece of state: which row is armed for deletion.
+
+    A BUG IN PHASE 2's CODE, FOUND BY THIS PHASE'S TESTS. The resume-on-
+    mount handler called setTurns unconditionally, so a response landing
+    AFTER the customer had already sent their first message deleted the
+    turn they were watching and filed their next message into the resumed
+    chat rather than the new one. Both setters are now functional and
+    yield to whatever is already there. It would have surfaced as an
+    intermittent "my message vanished", which is the kind that never gets
+    reproduced.
+
+    ONE MUTATION SURVIVED AND THE CODE WAS WRONG, NOT THE TEST. A
+    Math.max(0, ...) clamp in relativeTime, written to stop a future
+    timestamp reading as "-1m ago", could never change an answer: a
+    negative age is below every threshold and the first branch claims it
+    anyway. Removed rather than left as decoration that looks like a
+    guard.
+
+    Mutation-tested: 28 across the six tasks, 27 caught and the survivor
+    dealt with above. One further attempt was discarded rather than
+    counted -- it broke compilation, so the suite did not run and the
+    result said nothing about the tests.
+
+    VERIFIED LIVE 2026-09-04 on deploy 69cbce15 (commit 0e72d98), signed
+    in as the seeded demo customer:
+      * the header carries Start a new chat / Show chat history / Close /
+        Send, all as icons with accessible names;
+      * the history lists a chat named from its first message with a
+        relative age, and HIDES the message box while it shows;
+      * pressing + issued ZERO network requests and left the list
+        unchanged -- instrumented by wrapping window.fetch, not eyeballed;
+      * both header buttons were disabled mid-stream and enabled again
+        after;
+      * a new chat appeared in the list, named from the utterance, newest
+        first;
+      * opening an older chat restored its turns and left the other one
+        behind;
+      * the FIRST delete click armed and deleted nothing; Cancel backed
+        out with both chats intact; the second click removed it;
+      * deleting the chat that was open cleared the panel to its empty
+        state rather than leaving a transcript with no rows behind it.
+
+    THE FIRST DEPLOY OF THIS COMMIT FAILED FOR AN INFRASTRUCTURE REASON:
+    "failed to solve: failed to load cache key: unable to lease content:
+    lease does not exist". That is Railway's buildkit losing a cache layer,
+    not the code -- next build compiled clean locally. A redeploy of the
+    same commit succeeded. Worth recognising rather than debugging next
+    time it appears.
+
+    Phases 4-6 (titles, agent memory, summarisation) each still get their
+    own plan. Phase 5 is the one that changes how the assistant feels: the
+    chat is saved, but the agent has not read it.
