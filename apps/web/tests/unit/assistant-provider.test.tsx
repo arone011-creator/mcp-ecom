@@ -17,7 +17,7 @@ import {
 // only `ok` and `body.getReader()`, and jsdom has no Response. Chunked
 // deliberately, so the parser's buffering is exercised here too and not
 // only in its own tests.
-function streamOf(wire: string, status = 200) {
+function streamOf(wire: string, status = 200, conversationId: string | null = null) {
   const encoder = new TextEncoder();
   const chunks = wire ? [wire.slice(0, 30), wire.slice(30)] : [];
   let index = 0;
@@ -25,6 +25,13 @@ function streamOf(wire: string, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    // The bridge names the conversation in a header. A real Response
+    // always has one, so the stand-in must too, or the provider reads
+    // `.get` off undefined the moment it starts adopting it.
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === 'x-conversation-id' ? conversationId : null,
+    },
     body: {
       getReader: () => ({
         read: async () =>
@@ -34,6 +41,13 @@ function streamOf(wire: string, status = 200) {
       }),
     },
   } as unknown as Response;
+}
+
+/** Only the turns posted to the bridge -- not the resume-on-mount GET. */
+function bridgeCalls(): [string, { body: string }][] {
+  return (global.fetch as jest.Mock).mock.calls.filter(
+    ([url]) => String(url) === '/api/assistant'
+  );
 }
 
 const ONE_TURN =
@@ -96,7 +110,11 @@ describe('AssistantProvider', () => {
     renderProbe();
     await ask();
 
-    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    // Selected by url rather than by index: the provider also asks for a
+    // conversation to resume on mount, and that call is not this one.
+    const bridge = bridgeCalls();
+    expect(bridge).toHaveLength(1);
+    const [url, init] = bridge[0]!;
     expect(String(url)).toBe('/api/assistant');
     expect(JSON.parse(init.body)).toEqual({ utterance: 'what did I order?' });
   });
@@ -176,7 +194,7 @@ describe('AssistantProvider', () => {
     await waitFor(() =>
       expect(screen.getByTestId('status')).toHaveTextContent('idle')
     );
-    expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+    expect(bridgeCalls()).toHaveLength(1);
   });
 
   it('ignores a blank utterance without calling the bridge', async () => {
@@ -194,7 +212,7 @@ describe('AssistantProvider', () => {
       screen.getByText('blank').click();
     });
 
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(bridgeCalls()).toHaveLength(0);
   });
 });
 
@@ -240,10 +258,20 @@ describe('turns own their events', () => {
     const second =
       'event: assistant\ndata: {"v":1,"seq":0,"type":"message","data":{"text":"answer two"}}\n\n';
 
-    global.fetch = jest
-      .fn()
-      .mockResolvedValueOnce(streamOf(first))
-      .mockResolvedValueOnce(streamOf(second));
+    // Dispatched by url, not queued: the provider also asks for a
+    // conversation to resume on mount, and a queue would hand that call
+    // the first turn's stream.
+    const turns = [streamOf(first), streamOf(second)];
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/conversations/latest')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { conversation: null } }),
+        } as unknown as Response;
+      }
+      return turns.shift()!;
+    });
 
     renderTranscript();
 
@@ -264,5 +292,162 @@ describe('turns own their events', () => {
     expect(screen.getByTestId('shape')).toHaveTextContent(
       'first question=>answer one | second question=>answer two'
     );
+  });
+});
+
+describe('resuming a stored conversation', () => {
+  function ResumeProbe() {
+    const { transcript, conversationId, send } = useAssistant();
+
+    return (
+      <div>
+        <button onClick={() => send('a follow-up')}>ask</button>
+        <span data-testid="conversation">{conversationId ?? 'none'}</span>
+        <span data-testid="shape">
+          {transcript
+            .map(
+              (entry) =>
+                `${entry.utterance}=>${entry.conversation.timeline
+                  .map((item) => (item.kind === 'text' ? item.text : `[${item.kind}]`))
+                  .join(',')}`
+            )
+            .join(' | ')}
+        </span>
+      </div>
+    );
+  }
+
+  const STORED = {
+    data: {
+      conversation: {
+        id: 'conv_1',
+        title: null,
+        turns: [
+          {
+            utterance: 'what did I order?',
+            events: [
+              { v: 1, seq: 0, type: 'message', data: { text: 'You ordered ORD-1.' } },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  function resumeWith(body: unknown) {
+    return jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/conversations/latest')) {
+        return { ok: true, status: 200, json: async () => body } as unknown as Response;
+      }
+      return streamOf(
+        'event: assistant\ndata: {"v":1,"seq":0,"type":"message","data":{"text":"answer two"}}\n\n'
+      );
+    });
+  }
+
+  function renderResume() {
+    return render(
+      <AssistantProvider>
+        <ResumeProbe />
+      </AssistantProvider>
+    );
+  }
+
+  it('shows the conversation the customer was last having', async () => {
+    global.fetch = resumeWith(STORED);
+
+    renderResume();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('shape')).toHaveTextContent(
+        'what did I order?=>You ordered ORD-1.'
+      )
+    );
+    expect(screen.getByTestId('conversation')).toHaveTextContent('conv_1');
+  });
+
+  it('continues that conversation rather than starting another', async () => {
+    // Without sending the id back, every reload would strand the old chat
+    // and begin a new one -- the history list would fill with orphans.
+    global.fetch = resumeWith(STORED);
+
+    renderResume();
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('conv_1')
+    );
+
+    await act(async () => {
+      screen.getByText('ask').click();
+    });
+
+    const send = bridgeCalls()[0]!;
+    expect(JSON.parse(send[1].body)).toEqual({
+      utterance: 'a follow-up',
+      conversationId: 'conv_1',
+    });
+  });
+
+  it('starts empty for a customer who has never chatted', async () => {
+    global.fetch = resumeWith({ data: { conversation: null } });
+
+    renderResume();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('conversation')).toHaveTextContent('none')
+    );
+    expect(screen.getByTestId('shape')).toHaveTextContent('');
+  });
+
+  it('stays usable when the stored conversation cannot be loaded', async () => {
+    // A resume that fails must not take the assistant down with it. A
+    // customer who cannot see yesterday's chat can still have a new one.
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/conversations/latest')) {
+        return { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+      }
+      return streamOf(
+        'event: assistant\ndata: {"v":1,"seq":0,"type":"message","data":{"text":"answer"}}\n\n'
+      );
+    });
+
+    renderResume();
+
+    await act(async () => {
+      screen.getByText('ask').click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('shape')).toHaveTextContent('a follow-up=>answer')
+    );
+  });
+
+  it('drops a stored event it cannot trust', async () => {
+    // Stored events go through the SAME door as live ones. They were
+    // written by the agent, and a row that has been tampered with or
+    // written by an older schema must not take down the panel.
+    global.fetch = resumeWith({
+      data: {
+        conversation: {
+          id: 'conv_1',
+          title: null,
+          turns: [
+            {
+              utterance: 'hello',
+              events: [
+                { v: 99, seq: 0, type: 'message', data: { text: 'from the future' } },
+                { v: 1, seq: 1, type: 'message', data: { text: 'readable' } },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    renderResume();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('shape')).toHaveTextContent('hello=>readable')
+    );
+    expect(screen.getByTestId('shape')).not.toHaveTextContent('from the future');
   });
 });

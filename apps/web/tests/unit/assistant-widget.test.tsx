@@ -19,6 +19,9 @@ function streamOf(wire: string, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    // The bridge names the conversation in a header; a real Response
+    // always has one.
+    headers: { get: () => null },
     body: {
       getReader: () => ({
         read: async () =>
@@ -53,6 +56,7 @@ function controlledStream() {
     response: {
       ok: true,
       status: 200,
+      headers: { get: () => null },
       body: {
         getReader: () => ({
           read: () => {
@@ -379,10 +383,23 @@ data: ${JSON.stringify({
 
 `;
 
-    global.fetch = jest
-      .fn()
-      .mockResolvedValueOnce(streamOf(answer('Your last order was ORD-1.')))
-      .mockResolvedValueOnce(streamOf(answer('It ships on Friday.')));
+    // Dispatched by url, not queued: the provider also asks for a
+    // conversation to resume on mount, and a queue would hand that call
+    // the first turn's stream.
+    const turns = [
+      streamOf(answer('Your last order was ORD-1.')),
+      streamOf(answer('It ships on Friday.')),
+    ];
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/conversations/latest')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { conversation: null } }),
+        } as unknown as Response;
+      }
+      return turns.shift()!;
+    });
 
     const { container } = renderWidget();
     await open();

@@ -19,6 +19,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -64,6 +65,8 @@ export interface TranscriptEntry {
 }
 
 interface AssistantContextValue {
+  /** The conversation being had, or null before the first message. */
+  conversationId: string | null;
   events: AssistantEvent[];
   conversation: Conversation;
   turns: Turn[];
@@ -83,6 +86,52 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [status, setStatus] = useState<AssistantStatus>('idle');
   const [answered, setAnswered] = useState<Record<string, DecisionState>>({});
+  const [conversationId, setConversationId] = useState<string | null>(null);
+
+  // RESUME ON MOUNT. Mounted once in the root layout, so this runs once
+  // per page load rather than once per navigation.
+  //
+  // A failure here is deliberately quiet. Not being able to show
+  // yesterday's chat is a disappointment; refusing to let the customer
+  // start a new one over it would be a fault.
+  useEffect(() => {
+    let live = true;
+
+    fetch('/api/assistant/conversations/latest', {
+      headers: { accept: 'application/json' },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+      })
+      .then((body) => {
+        const stored = body?.data?.conversation;
+        if (!live || !stored) return;
+
+        setConversationId(stored.id);
+        setTurns(
+          (stored.turns ?? []).map(
+            (turn: { utterance: string; events: unknown[] }) => ({
+              utterance: turn.utterance,
+              // THE SAME DOOR AS THE LIVE STREAM. These rows were written
+              // by the agent; a tampered or older-schema event must be
+              // dropped, not rendered, and certainly not allowed to throw.
+              events: (turn.events ?? [])
+                .map(parseEvent)
+                .filter((event): event is AssistantEvent => event !== null),
+            })
+          )
+        );
+      })
+      .catch(() => {
+        // Nothing to resume, or it could not be read. Either way the
+        // panel opens empty and works.
+      });
+
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // A ref rather than the state value: two clicks in the same tick would
   // both read the same stale `status` and both fire.
@@ -100,8 +149,15 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ utterance: asked }),
+        body: JSON.stringify(
+          conversationId ? { utterance: asked, conversationId } : { utterance: asked }
+        ),
       });
+
+      // The bridge creates the conversation on the first message and names
+      // it here. Without adopting it, every message would start a new one.
+      const named = response.headers.get('x-conversation-id');
+      if (named) setConversationId(named);
 
       if (!response.ok || !response.body) {
         setStatus('error');
@@ -163,7 +219,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     } finally {
       inFlight.current = false;
     }
-  }, []);
+    // conversationId is a dependency: without it the first message after a
+    // resume would be sent with a stale null and strand the old chat.
+  }, [conversationId]);
 
   /**
    * Answer a pending approval.
@@ -223,6 +281,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
+      conversationId,
       events,
       conversation,
       transcript,
@@ -232,7 +291,17 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       approve,
       answered,
     }),
-    [events, conversation, transcript, turns, status, send, approve, answered]
+    [
+      conversationId,
+      events,
+      conversation,
+      transcript,
+      turns,
+      status,
+      send,
+      approve,
+      answered,
+    ]
   );
 
   return (
