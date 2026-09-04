@@ -732,3 +732,128 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     Phases 4-6 (titles, agent memory, summarisation) each still get their
     own plan. Phase 5 is the one that changes how the assistant feels: the
     chat is saved, but the agent has not read it.
+
+  2026-09-04 -- CHAT PHASE 5: AGENT MEMORY (plan
+  docs/superpowers/plans/2026-09-04-chat-phase5-agent-memory.md)
+
+    The assistant reads the chat it is in. Reopen a conversation, ask
+    "and the second one?", and it answers.
+
+    HOW IT TRAVELS. The agent stays stateless. The bridge reads the
+    earlier turns' agentContext, trims them to a token budget, and sends
+    them as `history` in the request body. The agent's own record of the
+    turn comes back on a SECOND control frame -- the channel that already
+    carries the MCP session id and that the bridge already drops. So the
+    model transcript reaches the database without a browser anywhere on
+    the path, and no new leak path was opened to do it.
+
+    WHAT CHANGED
+      * lib/assistant/history-budget.ts -- estimateTokens and
+        buildHistory. Turns are SELECTED newest-first and REPLAYED
+        oldest-first. The walk stops at the first turn it cannot replay
+        rather than skipping it, so history is always contiguous: a gap
+        in the middle is worse than a shorter history, because the model
+        cannot tell that anything was removed and reads what it can see
+        as consecutive.
+      * conversation-store gained loadAgentContext -- selects
+        agentContext and nothing else, because it runs on every turn of
+        every continuing conversation.
+      * The bridge sends `history`, captures the context frame, and
+        writes it to agentContext. It reads NOTHING for a new chat.
+
+    THE BUDGET IS AN ESTIMATE, AND SAYS SO. Four characters of JSON per
+    token, default 6000, overridable with ASSISTANT_HISTORY_TOKEN_BUDGET.
+    A real tokeniser would be a new dependency to make a number more
+    precise that only needs to be safe, and the number is set far below
+    anything the model would refuse. The ceiling is about what a long
+    conversation COSTS on every message, not about what fits.
+
+    A TURN IS THE UNIT, AND THAT IS NOT TIDINESS. Each stored context
+    opens with the customer's message, answers every tool call it makes
+    and ends with prose, so any run of consecutive ones is a valid
+    request. Half of one is a tool call nothing answered, which the API
+    rejects outright -- so a turn that DIED hands back no context at all
+    and is stored as null. Storing a half turn would break every LATER
+    turn of that conversation, not just the one that failed.
+
+    AN ALLOWLIST OF ROLES, NOT A BAN ON `system`. The roadmap says
+    "refuse any system role". Written literally that is a rule about one
+    string, and the API already has `developer` with the same authority.
+    Three roles a turn can produce, three accepted, in both languages.
+    The storefront DROPS a bad row (and everything older); the agent
+    REFUSES the request with a 400. Two layers on purpose: dropping means
+    a tampered row costs memory rather than the conversation, and the
+    agent's refusal is the guarantee that does not depend on the
+    storefront being right.
+
+    PRE-PHASE-5 ROWS ARE HARMLESS BY THE SAME RULE. Every turn stored
+    since Phase 2 holds agentContext: null. They are not replayable, the
+    walk stops at them, and replay simply starts after the newest one. No
+    migration, no backfill.
+
+    A FAILED HISTORY READ IS LOGGED AND SKIPPED, NOT RAISED. A chat that
+    cannot remember still answers. Failing the turn would take a working
+    conversation down over a degraded feature the customer cannot act on.
+
+    Mutation-tested: 12 across both repos, all 12 caught -- the role
+    allowlists, the seed export, the contiguity rule, the replay order,
+    the control-vs-assistant channel, sending history on a new chat, and
+    storing the context.
+
+    ONE TYPE ERROR THE TESTS COULD NOT HAVE FOUND. buildHistory indexed
+    backwards through the array, which noUncheckedIndexedAccess correctly
+    flags as possibly undefined. Rewritten to iterate a reversed copy
+    rather than silenced with a non-null assertion: the copy costs
+    nothing next to stringifying each turn, and the loop now reads as
+    being about turns rather than about arithmetic.
+
+    STILL OPEN AFTER THIS PHASE
+      * An over-budget conversation loses its oldest turns ABRUPTLY, with
+        nothing in their place. Phase 6 (summarisation) is what makes
+        that graceful. The budget was built first deliberately, so the
+        summariser improves a working floor rather than being the only
+        thing holding the ceiling.
+      * No cap on the size of a stored agentContext row. An enormous tool
+        result is written in full and then never replayed, because it
+        does not fit. Capping at write time would mean silently storing
+        null for a turn that succeeded. If row size becomes a problem it
+        will show up as a database measurement, not as a guess made now.
+      * Memory is scoped to ONE conversation, deliberately. Two chats
+        about two different orders must not contaminate each other.
+
+    VERIFIED LIVE 2026-09-04 on web deploy bde4422 against agent deploy
+    c14e75d (both confirmed by commit hash, and the agent additionally by
+    the sha its /health reports -- a 200 proves A container is up, not
+    that it is THIS one). Signed in as the seeded demo customer, with
+    window.fetch wrapped so every request body and the whole response
+    stream could be READ rather than eyeballed:
+
+      * MEMORY WORKS. Turn 1 "what did I order recently?" answered with a
+        numbered list. Turn 2 "and the second one?" answered with the
+        MacBook Air M2 -- item 2 of that list -- and went on to fetch
+        that order's totals, which means it resolved an order id it could
+        only have got from the replayed turn.
+      * MEMORY SURVIVES A REOPEN. Reopened the same chat from the history
+        list and asked "and what did the first one cost?" as a THIRD
+        turn: it answered with the iPhone 15 Pro's totals, item 1 of the
+        list from turn 1. The resume path replays the same rows the live
+        path does.
+      * A NEW CHAT KNOWS NOTHING. Pressed + and asked "and the second
+        one?" cold: it asked which second one, and the stream never
+        mentioned the MacBook. Memory is scoped to the conversation.
+      * THE CONTEXT NEVER REACHED THE BROWSER. Every response stream
+        contained ONLY `event: assistant` frames -- no `event: control`,
+        no "context", no "role", no "tool_call_id". Read off the captured
+        stream text, not inferred from the panel.
+      * THE PRE-PHASE-5 CHAT STILL WORKS. Reopened the 7-hour-old chat
+        from the Phase 3 verification, whose every turn holds
+        agentContext: null, and asked a follow-up. It answered cleanly
+        with ZERO error events and no memory -- replay stopped at the
+        null rows exactly as intended. No migration and no backfill were
+        needed to make that safe.
+
+    NOT VERIFIED LIVE: the budget actually dropping an oldest turn. Doing
+    that honestly needs a conversation long enough to exceed 6000
+    estimated tokens, which is many paid turns; it is covered by unit
+    tests including a hundred-turn case, and by a bridge test that sets
+    the budget to 40 and watches the older turn fall off the request.
