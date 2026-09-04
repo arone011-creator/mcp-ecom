@@ -12,6 +12,7 @@ const mockPrisma = {
     findMany: jest.fn(),
     update: jest.fn(),
     deleteMany: jest.fn(),
+    updateMany: jest.fn(),
   },
   conversationTurn: {
     create: jest.fn(),
@@ -24,10 +25,12 @@ jest.mock('@/lib/prisma', () => ({ __esModule: true, default: mockPrisma }));
 import {
   appendTurn,
   deleteConversation,
+  firstExchange,
   listConversations,
   loadAgentContext,
   loadConversation,
   loadLatestConversation,
+  nameConversation,
   ownedConversation,
   startConversation,
 } from '@/lib/assistant/conversation-store';
@@ -40,6 +43,7 @@ beforeEach(() => {
   mockPrisma.conversationTurn.aggregate.mockReset();
   mockPrisma.conversation.findMany.mockReset();
   mockPrisma.conversation.deleteMany.mockReset();
+  mockPrisma.conversation.updateMany.mockReset();
 });
 
 describe('startConversation', () => {
@@ -377,5 +381,76 @@ describe('loadAgentContext', () => {
     mockPrisma.conversation.findFirst.mockResolvedValue({ turns: [] });
 
     expect(await loadAgentContext('user_a', 'conv_1')).toEqual([]);
+  });
+});
+
+describe('firstExchange', () => {
+  it('reads turn zero of a chat the customer owns', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue({
+      title: null,
+      turns: [{ utterance: 'what did I order?', events: [{ type: 'message' }] }],
+    });
+
+    expect(await firstExchange('user_a', 'conv_1')).toEqual({
+      title: null,
+      utterance: 'what did I order?',
+      events: [{ type: 'message' }],
+    });
+    expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'conv_1', userId: 'user_a' } })
+    );
+  });
+
+  it('reads ONE turn, not the whole conversation', async () => {
+    // Naming needs the first exchange. Reading a long chat to name it
+    // would grow with the chat.
+    mockPrisma.conversation.findFirst.mockResolvedValue({ title: null, turns: [] });
+
+    await firstExchange('user_a', 'conv_1');
+
+    const [args] = mockPrisma.conversation.findFirst.mock.calls[0];
+    expect(args.select.turns.take).toBe(1);
+    expect(args.select.turns.orderBy).toEqual({ seq: 'asc' });
+  });
+
+  it('finds nothing for another customer', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue(null);
+
+    expect(await firstExchange('user_b', 'conv_1')).toBeNull();
+  });
+
+  it('finds nothing for a chat with no turns yet', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue({ title: null, turns: [] });
+
+    expect(await firstExchange('user_a', 'conv_1')).toBeNull();
+  });
+});
+
+describe('nameConversation', () => {
+  it('names a chat that has no name yet', async () => {
+    mockPrisma.conversation.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await nameConversation('user_a', 'conv_1', 'Recent orders')).toBe(true);
+  });
+
+  it('will not rename a chat that already has a name', async () => {
+    // THE MUST PROVE for idempotency, and it is ONE query: "unnamed" and
+    // "yours" are the same atomic condition, so a double-fired request
+    // matches nothing rather than racing a read.
+    mockPrisma.conversation.updateMany.mockResolvedValue({ count: 0 });
+
+    expect(await nameConversation('user_a', 'conv_1', 'Recent orders')).toBe(false);
+    expect(mockPrisma.conversation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'conv_1', userId: 'user_a', title: null },
+      data: { title: 'Recent orders' },
+    });
+  });
+
+  it('will not name another customer chat', async () => {
+    mockPrisma.conversation.updateMany.mockResolvedValue({ count: 0 });
+
+    expect(await nameConversation('user_b', 'conv_1', 'Recent orders')).toBe(false);
+    const [args] = mockPrisma.conversation.updateMany.mock.calls[0];
+    expect(args.where.userId).toBe('user_b');
   });
 });

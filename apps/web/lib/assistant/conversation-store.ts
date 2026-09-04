@@ -257,3 +257,75 @@ export async function loadAgentContext(
 
   return conversation.turns.map((turn) => ({ agentContext: turn.agentContext }));
 }
+
+/** A chat's first turn, and whether it is already named. */
+export interface FirstExchange {
+  title: string | null;
+  utterance: string;
+  events: unknown[];
+}
+
+/**
+ * Turn zero of one chat, for naming it.
+ *
+ * ONE turn, because that is what a name is made of, and reading a whole
+ * conversation to write a sixty-character string would grow with the
+ * conversation.
+ *
+ * The title comes back too, so the caller can stop before spending a
+ * model call on a chat that already has a name. The write is still
+ * guarded independently -- see nameConversation -- because this read and
+ * that write are not one transaction.
+ */
+export async function firstExchange(
+  userId: string,
+  id: string
+): Promise<FirstExchange | null> {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, userId },
+    select: {
+      title: true,
+      turns: {
+        orderBy: { seq: 'asc' },
+        take: 1,
+        select: { utterance: true, events: true },
+      },
+    },
+  });
+
+  const turn = conversation?.turns[0];
+  if (!conversation || !turn) return null;
+
+  return {
+    title: conversation.title,
+    utterance: turn.utterance,
+    events: (turn.events ?? []) as unknown[],
+  };
+}
+
+/**
+ * Name a chat, but only if it has no name and only if it is this
+ * customer's. True if it was named, false if there was nothing to name.
+ *
+ * ONE updateMany, not a read then a write. `title: null` in the `where`
+ * makes "still unnamed" part of the same atomic condition as "yours", so
+ * two tabs racing -- or one request fired twice, which the browser is
+ * allowed to do here -- cannot both write. The second matches zero rows
+ * and says so.
+ *
+ * updateMany rather than update for the reason deleteConversation uses
+ * deleteMany: update THROWS when nothing matches, and a throw is a
+ * different observable answer from "not yours".
+ */
+export async function nameConversation(
+  userId: string,
+  id: string,
+  title: string
+): Promise<boolean> {
+  const { count } = await prisma.conversation.updateMany({
+    where: { id, userId, title: null },
+    data: { title },
+  });
+
+  return count > 0;
+}
