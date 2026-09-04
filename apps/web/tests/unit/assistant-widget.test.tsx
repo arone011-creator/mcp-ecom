@@ -540,9 +540,14 @@ describe('icons instead of words, and where the view sits', () => {
     await ask('what did I order?');
 
     await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
-        expect.objectContaining({ block: 'start' })
-      )
+      // Asserted EXACTLY, not objectContaining. behavior: 'smooth' was
+      // measured in Chrome to move this container not at all, so the
+      // absence of it is part of the behaviour, not an implementation
+      // detail. jsdom has no layout, so the call is all that can be seen
+      // from here -- which is the reason to pin it precisely.
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        block: 'start',
+      })
     );
   });
 
@@ -586,6 +591,10 @@ describe('icons instead of words, and where the view sits', () => {
     const blocks = container.querySelectorAll('[data-turn]');
     expect(blocks).toHaveLength(2);
     expect(blocks[0]!.className).not.toMatch(/min-h-/);
-    expect(blocks[1]!.className).toMatch(/min-h-/);
+    // min-h-FULL specifically. A percentage height resolves against the
+    // content box, which has already had the container's padding removed,
+    // so a calc that subtracts it again reserves too little and the block
+    // stops short of the top -- measured, not guessed.
+    expect(blocks[1]!.className).toMatch(/min-h-full/);
   });
 });

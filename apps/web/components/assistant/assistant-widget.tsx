@@ -37,7 +37,12 @@ export function AssistantWidget() {
 
   useEffect(() => {
     if (!open || transcript.length === 0) return;
-    lastTurn.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    // NOT behavior: 'smooth'. Measured in Chrome against the deployed
+    // build: a smooth scrollIntoView inside this container moves nothing
+    // at all, while the instant one lands the block at exactly offset 0.
+    // An animated scroll would also be racing the answer streaming in
+    // underneath it, which is a race with no good outcome.
+    lastTurn.current?.scrollIntoView({ block: 'start' });
   }, [open, transcript.length]);
 
   async function submit(event: React.FormEvent) {
@@ -105,9 +110,12 @@ export function AssistantWidget() {
             // a turn cannot scroll to the TOP of its container unless there
             // is that much space beneath it. Only the last one: giving every
             // block the same would turn the transcript into a slideshow.
-            className={`flex flex-col gap-2 ${
-              newest ? 'min-h-[calc(100%-1.5rem)]' : ''
-            }`}
+            //
+            // `full`, not a calc that subtracts the padding. A percentage
+            // height resolves against the CONTENT box, which has already had
+            // the container's py-3 taken off it -- subtracting it again left
+            // the reservation 24px short of the view, measured in Chrome.
+            className={`flex flex-col gap-2 ${newest ? 'min-h-full' : ''}`}
           >
             <p className="max-w-[85%] self-end rounded-2xl bg-slate-900 px-3 py-2 text-white">
               {entry.utterance}
