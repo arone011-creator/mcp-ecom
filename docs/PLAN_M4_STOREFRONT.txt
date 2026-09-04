@@ -928,3 +928,142 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
     NOT VERIFIED LIVE: the failure paths. Taking the agent down to watch
     a chat keep its fallback is not worth an outage; four separate
     failure paths are covered by route tests.
+
+  2026-09-04 -- M4 TASK 6: RICH RESULTS AND PROGRESS (plan
+  docs/superpowers/plans/2026-09-04-m4-task6-rich-results.md)
+
+    The panel stops answering only in paragraphs. A product search shows
+    product cards, an order lookup shows order cards, a cart change shows
+    the cart it produced, a multi-step turn shows its steps, and a tool
+    that fails offers a way forward.
+
+    NO CONTRACT CHANGE, NO AGENT CHANGE, NO SCHEMA CHANGE. Everything
+    here renders from conversation.tools[].result -- the structured tool
+    results already in the frozen v1 event stream.
+
+    WHAT CHANGED
+      * lib/assistant/tool-results.ts -- one raw result in, one card
+        model out. Every shape assumption about the API lives here, and
+        every one was read off the DEPLOYED app rather than the Pydantic
+        models: the wire carries the API's camelCase aliases
+        (orderNumber, orderItems, productName, itemCount), not the
+        models' snake_case. Money stays a string the whole way, so 10.50
+        does not become 10.5.
+      * components/assistant/result-cards.tsx -- product, order and cart
+        cards, linking to the real product and order pages.
+      * components/assistant/plan-steps.tsx -- the steps of a turn that
+        has more than one, with a done count.
+      * lib/assistant/tool-labels.ts -- the customer-facing tool wording,
+        extracted from tool-activity.tsx now that two places show it.
+      * Try again / Dismiss on a failed chip, and router.refresh() after
+        a change.
+
+    THE CARD DOES NOT REPLACE THE SENTENCE. "Cards instead of prose"
+    read literally would suppress the model's text when a card shows.
+    That is wrong: the sentence answers the QUESTION ("both were
+    cancelled"), the card shows the DATA. Suppressing it would leave the
+    customer to infer an answer from a grid.
+
+    AN UNRECOGNISED RESULT RENDERS NOTHING, NOT A JSON BLOB. describeResult
+    returns null and the panel shows the chip alone, exactly as before. A
+    fallback dump would be a standing invitation to render a tool result
+    nobody designed for, which is how untrusted content reaches a screen.
+
+    THE PLAN IS THE TOOLS, NOT THE REASONING. The design asks for
+    visibility into what the assistant intends "without exposing raw
+    reasoning". The steps are the calls it is actually making -- a fact
+    about the turn -- rather than the model's account of itself, which is
+    prose, and prose beside an action is the thing this codebase does not
+    render. A waiting approval is not counted as done: it is a stop, and
+    counting it would claim the turn had got further than it has.
+
+    MUST PROVE 1 -- A FAILURE HAS A WAY FORWARD, NOT A STALLED SPINNER.
+    Try again and Dismiss appear only once a call has actually FAILED.
+    The inverse is what makes the guarantee complete and it has its own
+    test: a working call always resolves to done or failed, and only the
+    failed state offers a way out, so there is no third state where the
+    customer is stuck with nothing to press. Retry sends a NEW turn
+    rather than resuming the failed one -- resuming would mean the agent
+    re-entering a graph it has already finished. Dismissing hides a
+    notice and does not edit the record: the turn is unchanged, still
+    stored, and the assistant's own sentence stays.
+
+    MUST PROVE 2 -- A CHANGE IS VISIBLE ON THE REAL PAGES. It already
+    went through the same /api/v1 a manual action does; what was stale
+    was the server-rendered page AROUND the panel, which is exactly the
+    staleness cart-view.tsx already fixes for its own buttons. The
+    provider now calls router.refresh() after a cart or order change --
+    only on a change and only on success, because a refresh re-renders
+    every server component on the page and doing it after "what did I
+    order?" would make every question cost one for nothing.
+
+    ONE SPEC LINE DELIBERATELY NOT BUILT. The design names three
+    recovery actions: Retry, CHOOSE ANOTHER, Cancel. Two are honest here.
+    "Choose another" is not: offering alternatives needs a list of real,
+    available, customer-owned options, and the only place those can come
+    from is a tool result -- which is the entire subject of Task 6b ("the
+    options come from a tool result, so the customer can only choose
+    something that actually exists and belongs to them"). Building it
+    here would mean a dead control or a hand-written list of guesses, and
+    a guessed alternative in a shopping assistant is precisely the
+    failure 6b exists to prevent. IT MOVES TO 6b; it is not done.
+
+    Mutation-tested: 8, all caught -- the unknown-tool fallback, the
+    image-url scheme check, the two-step threshold, the waiting-step
+    count, the failed-only recovery buttons, both halves of the refresh
+    condition, and the dismissal guard.
+
+    TWO MUTATIONS INITIALLY REPORTED NOTHING AND WERE REDONE. Their sed
+    patterns did not match, so no mutation was applied and the green
+    suite said only that the code was unchanged. "Updated 0 paths from
+    the index" after the revert is the tell: a mutation that changed no
+    file is not a surviving mutation, and counting it as one would have
+    been a false pass.
+
+    THREE SHAPES WERE GUESSED, AND THE DEPLOYED APP CAUGHT ALL THREE.
+    Every unit test was green while the product card rendered NOTHING
+    against the real agent:
+      * search_products answers an ENVELOPE, {products, pagination}, not
+        a bare list. The fixture for that one tool was invented rather
+        than read off the wire -- the get_orders fixture WAS real, which
+        is exactly why that one worked and this one did not;
+      * product images are SITE-RELATIVE paths
+        ("/images/products/macbook-air-m2.svg"), and the absolute-url
+        allowlist rejected every real one. It now takes a single leading
+        slash as well, but not "//", which looks relative and points off
+        this origin;
+      * cancel_order was mapped to an order card on a shape nobody had
+        observed. It is now unmapped: it returns the raw response of POST
+        /cancel, and a guess that renders a card is worse than the chip
+        alone.
+    Every fixture in tests/unit/tool-results.test.ts is now a real
+    payload. The lesson is not "test more" -- it is that a fixture
+    written from a model definition tests the definition, not the wire.
+
+    VERIFIED LIVE 2026-09-04 on deploy 09f8d64, signed in as the demo
+    customer and reading the DOM rather than eyeballing it:
+      * ORDER CARDS: five orders, each with its number, total, status and
+        contents, each linking to its own /orders/{id} page -- and the
+        assistant's sentence still present above them;
+      * PRODUCT CARDS: "MacBook Air M2 $1199.99" linking to
+        /products/macbook-air-m2, with its image rendered;
+      * CART CARD: after "add one iPhone 15 Pro to my cart", the panel
+        showed "1 x iPhone 15 Pro $999.99";
+      * STEP LIST: that turn used two tools and showed "Steps - 2 of 2
+        done";
+      * MUST PROVE 2, THE CART COUNT: the header read "Cart, empty"
+        before the assistant's add and "Cart, 1 item" after it, WITH NO
+        MANUAL REFRESH and no navigation. Read off the anchor's
+        aria-label before and after, not from the panel.
+
+    NOT VERIFIED LIVE: the failure path. Three attempts to provoke a real
+    tool failure all failed to produce one, because the agent is better
+    behaved than the test needed it to be -- removing a non-existent cart
+    line is an idempotent success at the API, and asked for 99999
+    laptops it checked inventory and declined rather than attempting the
+    add. Rather than spend further model calls hunting for an error, it
+    is left covered by tests: seven on the chip (including the inverse --
+    a working call offers nothing, so there is no state with nothing to
+    press) and one through the whole panel, with a mutation confirming
+    they bite. Worth provoking properly the next time a tool genuinely
+    breaks.
