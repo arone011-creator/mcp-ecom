@@ -25,6 +25,7 @@ import React, {
   useState,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 
 import {
   type AssistantEvent,
@@ -116,6 +117,9 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // How a change made in the panel reaches the pages around it. See the
   // refresh in send() for why this is needed at all.
   const router = useRouter();
+  // Named apart from the panel's own `status`, which is the turn's
+  // lifecycle and a completely different thing.
+  const { status: signedIn } = useSession();
   const [answered, setAnswered] = useState<Record<string, DecisionState>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ListedChat[]>([]);
@@ -143,6 +147,12 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   // yesterday's chat is a disappointment; refusing to let the customer
   // start a new one over it would be a fault.
   useEffect(() => {
+    // NOBODY SIGNED IN MEANS NOTHING TO RESUME. Both requests below need
+    // a customer session, so without one they could only ever answer 401
+    // -- two of them on every signed-out page load, which is what sent a
+    // real investigation looking at the agent instead of at the session.
+    if (signedIn !== 'authenticated') return;
+
     let live = true;
 
     void refreshChats();
@@ -189,7 +199,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     return () => {
       live = false;
     };
-  }, [refreshChats]);
+    // signedIn, so a customer who signs in without a page load still
+    // gets their history resumed rather than an empty panel until they
+    // reload.
+  }, [refreshChats, signedIn]);
 
   // A ref rather than the state value: two clicks in the same tick would
   // both read the same stale `status` and both fire.

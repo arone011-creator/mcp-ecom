@@ -16,9 +16,12 @@ export function SignOutButton({ iconOnly = false }: { iconOnly?: boolean }) {
   return (
     <button
       type="button"
-      // Back to the shop rather than to a sign-in page: signing out is not
-      // the start of signing in again.
-      onClick={() => signOut({ callbackUrl: '/' })}
+      // To the sign-in page rather than back to the shop. This used to
+      // return to '/', on the reasoning that signing out is not the start
+      // of signing in again -- but it left a signed-out customer looking
+      // at a page that still looked signed in, which is how a 401 from
+      // the assistant got read as the shop being broken.
+      onClick={() => signOut({ callbackUrl: '/auth/signin' })}
       // The header has room for an icon and not a word. The accessible
       // name still has to be there, or the only way out of the account is
       // invisible to a screen reader.

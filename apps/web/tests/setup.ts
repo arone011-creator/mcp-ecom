@@ -328,3 +328,19 @@ export const cleanup = () => {
 };
 
 export default {};
+
+// next-auth's useSession throws outside a <SessionProvider>, and most
+// component tests render a component tree without one -- they were
+// written before anything in that tree asked who was signed in.
+//
+// DEFAULTS TO SIGNED IN, deliberately: that is the state those tests were
+// written to exercise, so the default keeps them meaning what they meant.
+// A test about the signed-out case mocks this module itself, which
+// overrides this for that file.
+jest.mock('next-auth/react', () => ({
+  ...jest.requireActual('next-auth/react'),
+  useSession: () => ({
+    data: { user: { email: 'customer@example.com' } },
+    status: 'authenticated',
+  }),
+}));

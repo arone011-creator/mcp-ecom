@@ -11,6 +11,7 @@
 // customer close the chat, keep shopping, and reopen it mid-thought.
 
 import { useEffect, useRef, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { History, Plus, Send, X } from 'lucide-react';
 
 import { animateScrollTop } from '@/lib/assistant/smooth-scroll';
@@ -30,6 +31,17 @@ import { describeResult } from '@/lib/assistant/tool-results';
 const TOP_GAP = 12;
 
 export function AssistantWidget() {
+  // NOTHING AT ALL WHEN NOBODY IS SIGNED IN. Every capability behind this
+  // button needs a customer session, so to a signed-out visitor it could
+  // only ever open a panel that answers 401 -- which the panel reported
+  // as "something went wrong reaching the assistant", blaming the network
+  // for a state the visitor could have fixed by signing in.
+  //
+  // Hidden while the session is still LOADING too: showing it and taking
+  // it away again is worse than showing it a moment late.
+  // Named apart from the panel's own `status`, which is the turn's
+  // lifecycle -- a different thing that happens to share the word.
+  const { status: signedIn } = useSession();
   const [open, setOpen] = useState(false);
   const [showingHistory, setShowingHistory] = useState(false);
   // Which failure notices the customer has waved away. LOCAL: it is about
@@ -91,6 +103,11 @@ export function AssistantWidget() {
     setDraft('');
     await send(asked);
   }
+
+  // AFTER the hooks above, never before them: an early return placed
+  // higher would change how many hooks run between renders, which React
+  // forbids and which would break the moment a session resolved.
+  if (signedIn !== 'authenticated') return null;
 
   if (!open) {
     return (

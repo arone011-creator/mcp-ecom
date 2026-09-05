@@ -15,14 +15,18 @@ const mockSignOut = signOut as unknown as jest.Mock;
 beforeEach(() => mockSignOut.mockReset());
 
 describe('SignOutButton', () => {
-  it('signs out and returns the customer to the shop', () => {
-    // Not to a sign-in page: signing out is not the start of signing in
-    // again.
+  it('sends the customer to the sign-in page', () => {
+    // CHANGED 2026-09-05. It used to return to the shop, on the reasoning
+    // that signing out is not the start of signing in again. In practice
+    // that left a signed-out customer on a page that still looked signed
+    // in, and the assistant's 401 was reported to them as "something went
+    // wrong" -- so the way out of the account now ends somewhere that
+    // says plainly what state they are in.
     render(<SignOutButton />);
 
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
 
-    expect(mockSignOut).toHaveBeenCalledWith({ callbackUrl: '/' });
+    expect(mockSignOut).toHaveBeenCalledWith({ callbackUrl: '/auth/signin' });
   });
 
   it('is reachable by its accessible name in the icon-only form', () => {
