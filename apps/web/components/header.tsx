@@ -30,16 +30,21 @@ export async function Header() {
   return (
     <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="text-xl font-bold tracking-tight">
+        {/* WHERE THE WORDMARK GOES DEPENDS ON WHO IS LOOKING. Signed in,
+            it is the way home. Signed out, home is a page that still
+            looks signed in -- the same confusion that made the
+            assistant's 401 read as a broken shop -- so it is the way to
+            sign in instead. */}
+        <Link
+          href={user ? '/' : '/auth/signin'}
+          className="text-xl font-bold tracking-tight"
+        >
           MCP Commerce
         </Link>
 
         <nav className="ml-4 hidden items-center gap-4 text-sm sm:flex">
           <Link href="/products" className="hover:text-foreground/70">
             Products
-          </Link>
-          <Link href="/search" className="hover:text-foreground/70">
-            Search
           </Link>
         </nav>
 
@@ -90,11 +95,7 @@ export async function Header() {
                   logout most people never find. */}
               <SignOutButton iconOnly />
             </>
-          ) : (
-            <Button asChild size="sm">
-              <Link href="/auth/signin">Sign in</Link>
-            </Button>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

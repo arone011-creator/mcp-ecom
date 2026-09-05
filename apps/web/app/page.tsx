@@ -12,13 +12,17 @@ import { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 
+// The description and the link preview matter MORE than the hero, not
+// less: they are what a search result and a shared link show, and those
+// reach people who have not seen the page at all.
 export const metadata: Metadata = {
   title: 'Home',
   description:
-    'Discover amazing products at unbeatable prices. Shop the latest trends and bestsellers.',
+    'A demo storefront for a Model Context Protocol server and its AI shopping assistant. Not a real shop: every product and price is fictional and no payment is taken.',
   openGraph: {
-    title: 'NextJS E-commerce Store - Home',
-    description: 'Discover amazing products at unbeatable prices',
+    title: 'MCP Commerce - A Demo Storefront',
+    description:
+      'Not a real shop. A dummy e-commerce site demonstrating an MCP server and an AI shopping assistant.',
     type: 'website',
   },
 };
@@ -59,14 +63,25 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-black/20" />
         <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
           <div className="text-center">
+            {/* SAY WHAT THIS IS, ABOVE EVERYTHING ELSE. It used to open
+                with stock storefront copy about incredible products at
+                prices you would not believe, on a site where every
+                product, price and order is invented. Someone arriving without context had nothing
+                telling them otherwise, and the AI assistant will discuss
+                those fictional prices as though they were real. */}
             <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
-              Welcome to Our
-              <span className="block text-yellow-300">Amazing Store</span>
+              MCP Commerce
+              <span className="block text-yellow-300">A Demo Storefront</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-200">
-              Discover incredible products at unbeatable prices. From the latest
-              trends to timeless classics, we have everything you need to
-              elevate your lifestyle.
+              This is not a real shop. It is a small, lightweight dummy
+              e-commerce site built to demonstrate a Model Context Protocol
+              server and the AI shopping assistant that uses it.
+            </p>
+            <p className="mx-auto mt-3 max-w-2xl text-base text-gray-300">
+              Every product, price, review and order here is fictional, and no
+              payment is ever taken. Browse, add to the cart and place an order
+              freely -- nothing is bought and nothing is shipped.
             </p>
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <Button

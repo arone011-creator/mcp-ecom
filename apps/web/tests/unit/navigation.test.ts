@@ -19,14 +19,33 @@ describe('site navigation', () => {
     expect(header).toMatch(/itemCount/);
   });
 
-  it('the header offers sign-in when signed out and account links when signed in', () => {
-    expect(header).toMatch(/href="\/auth\/signin"/);
+  it('the header offers account links when signed in', () => {
     expect(header).toMatch(/href="\/orders"/);
   });
 
-  it('the header links to products and search', () => {
+  it('sends a signed-out visitor to sign in when they click the wordmark', () => {
+    // CHANGED 2026-09-05. The wordmark used to be an unconditional
+    // href="/". A signed-out visitor clicking it landed back on a home
+    // page that still looked signed in, which is the same confusion that
+    // made the assistant's 401 read as a broken shop.
+    expect(header).toMatch(/user \? '\/' : '\/auth\/signin'/);
+  });
+
+  it('has no separate sign-in button', () => {
+    // The wordmark is the way in now. A button beside it that goes to
+    // the same place is a second control for one action.
+    expect(header).not.toMatch(/>Sign in</);
+  });
+
+  it('the header links to products', () => {
     expect(header).toMatch(/href="\/products"/);
-    expect(header).toMatch(/href="\/search"/);
+  });
+
+  it('reaches search through the search box, not a nav link', () => {
+    // The box is the affordance; a link beside it labelled "Search" that
+    // only opens an empty search page is a worse version of the box.
+    expect(header).toMatch(/action="\/search"/);
+    expect(header).not.toMatch(/href="\/search"/);
   });
 
   it('is more than the title-only stub it shipped as', () => {
