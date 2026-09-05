@@ -62,6 +62,12 @@ export const getProducts = createCachedFunction(
               slug: true,
             },
           },
+          images: {
+            select: {
+              url: true,
+              altText: true,
+            },
+          },
         },
         orderBy: {
           [sortBy]: sortOrder,
@@ -476,6 +482,12 @@ export const getNewArrivals = createCachedFunction(
             slug: true,
           },
         },
+        images: {
+          select: {
+            url: true,
+            altText: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -520,6 +532,12 @@ export const getPopularProducts = createCachedFunction(
             id: true,
             name: true,
             slug: true,
+          },
+        },
+        images: {
+          select: {
+            url: true,
+            altText: true,
           },
         },
       },
