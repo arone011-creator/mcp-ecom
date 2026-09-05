@@ -359,6 +359,52 @@ FOUR RULES THE PANEL IS BUILT ON, each of which has a test:
      inside the SQL rather than checking afterwards, and a stranger's id gets
      a 404 -- never a 403, which would confirm the id is real.
 
+THE SIMULATED ORDER LIFECYCLE (2026-09-05)
+
+Five of the seven order statuses used to be unreachable: nothing ever wrote
+them, so an order sat on PENDING for good and the four-step tracker could
+only light its first dot. An order placed from now on walks PENDING ->
+PROCESSING -> SHIPPED -> DELIVERED, one step a minute, and can be frozen.
+
+    POST  /api/orders/{id}/simulation             pause or resume, per order
+
+    lib/orders/simulation.ts             dueStatus, msUntilNextStep,
+                                         formatCountdown, isTerminated
+    server/orders/advance-simulation.ts  the compare-and-set write
+    components/orders/                   the amber demo panel and its
+      order-simulation-panel.tsx         countdown
+
+Four things about it are deliberate:
+
+  * NO SCHEDULER. The new status is written lazily when something READS the
+    order, from four explicit call sites -- not a Prisma middleware, which
+    would have hidden a write inside every query in the application. Nobody
+    can observe a stale status without reading it, so reading and a timer
+    are indistinguishable in practice.
+
+  * THE CLOCK IS TWO NULLABLE COLUMNS, AND NULL MEANS NEVER. Every row that
+    existed before that date is inert by absence of data rather than by a
+    condition somebody has to remember to write.
+
+  * PAUSING TAKES TWO COLUMNS, NOT THREE. Resuming pushes the start forward
+    by the pause duration instead of accumulating a debt, so elapsed time
+    has exactly one representation rather than two that can disagree.
+
+  * THE COUNTDOWN AND THE STATUS COME OFF ONE CLOCK. msUntilNextStep answers
+    "how long" where dueStatus answers "what next", from the same arguments
+    by the same rules, and a test asserts the two agree at every instant.
+    The countdown reaching zero is itself the read that writes the new
+    status, so the timer and the tracker change together.
+
+The pause and resume route is cookie-authenticated and DELIBERATELY NOT under
+/api/v1: that surface is documented as the whole set of capabilities the AI
+layer may use, and freezing a demo clock is not one of them. The agent
+carries a bearer and no cookie, so it structurally cannot reach it.
+
+Customer sign-out lives in the header and in the profile's Security tab.
+Before 2026-09-05 there was none at all -- only the admin layout linked to
+NextAuth's default page.
+
     IN PLAIN TERMS
     The pages a customer actually sees, a small admin area for whoever runs
     the shop, and a chat panel that can act on the customer's behalf. Most
@@ -366,7 +412,10 @@ FOUR RULES THE PANEL IS BUILT ON, each of which has a test:
     them fast and works without JavaScript. The chat panel is deliberately
     kept on a short leash: the browser never holds a key, it is only ever
     shown things the shop's own systems said, and it can only ever see the
-    customer's own data.
+    customer's own data. Orders placed from now on also walk through their
+    delivery states a step a minute, with a visible countdown and a pause
+    button, so the tracker can be seen working -- and there is finally a way
+    to sign out.
 
 
 ================================================================================
@@ -571,7 +620,10 @@ discovers it the hard way.
     only when something READS the order -- there is no scheduler. Nobody
     can observe a stale status without reading it, so the two are
     indistinguishable in practice, but a background report querying the
-    database directly would see stale rows.
+    database directly would see stale rows. On the order page the
+    countdown reaching zero triggers that read, with a fifteen-second poll
+    behind it as the safety net for a browser clock that runs ahead of the
+    server's.
 
   * AN APPROVAL CARD THAT CANNOT LOAD ITS DETAILS OFFERS NO WAY OUT. It
     refuses to describe the action, which is correct, but there is no

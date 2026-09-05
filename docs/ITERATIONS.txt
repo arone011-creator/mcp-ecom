@@ -580,16 +580,79 @@ project.
 
 
 ================================================================================
-12. WHERE IT STANDS NOW
+12. WHAT THE SIMULATED ORDER LIFECYCLE TAUGHT
 ================================================================================
 
-    Storefront                                    live, 817 tests passing
+A small feature, deliberately: a demo clock that walks an order through its
+delivery states a step a minute, a pause button, a countdown, and a sign-out
+link. Four lessons came out of it, and none of them are about order status.
+
+ENFORCE THE GUARANTEE WITH THE SHAPE OF THE DATA, NOT A CONDITION. The
+promise that no existing order would suddenly lurch forward is kept by the
+migration adding two nullable columns and backfilling nothing. Null means
+never advances. There is no rule anybody has to remember, and no code path
+that could forget it. That guarantee was then the FIRST thing checked on the
+deployed site, before anything about the new feature, because it is the one
+that touches data that already existed.
+
+THE DESIGN WAS WRONG AND THE PLAN SAID SO. The design document said the
+status advance belongs "in the query layer, so every reader gets it". There
+are four order read paths and two of them -- both /api/v1 routes -- query
+Prisma directly and deliberately. Following the design literally would have
+shipped a feature that worked on the web pages and silently did not for the
+agent. The correction was written into the plan with its reason, rather than
+quietly made.
+
+A MUTATION FOUND A BRANCH THE SUITE ONLY LOOKED LIKE IT COVERED. Removing
+the branch that stops a CANCELLED order drawing four tracker dots broke no
+test, because the order page is a server component with no harness -- so
+"your cancelled order is on its way" could have come back silently at any
+time. It was fixed rather than excused: the decision was extracted as
+isTerminated() and tested directly. That is the whole value of mutation
+testing. A related discipline came from the same session: a mutation that
+matches nothing changes no file, and its output is indistinguishable from a
+mutation the tests caught, so every mutation is now applied by exact-string
+replacement with an asserted match count.
+
+A ONCE-A-SECOND RENDER EXPOSED A SILENT FAILURE THAT WAS ALREADY THERE. The
+countdown added sixty renders a minute to a component whose polling interval
+listed the router in its dependencies. If that router identity ever stopped
+being stable, the interval would be torn down and rebuilt every second and
+the fifteen-second poll would never once reach fifteen -- no error, no log,
+the order simply stops advancing. The test mock ALREADY returned a fresh
+object per call, which is exactly that failure; it had been harmless only
+because nothing re-rendered. Fixed on both sides: the mock now matches the
+real hook, and the intervals depend on nothing but what should restart them.
+A test that is unrealistic in a way that does not matter yet is a test that
+will be wrong later, quietly.
+
+    IN PLAIN TERMS
+    The safest way to promise that old data will not move is to give it no
+    way to move, rather than writing a rule and trusting everyone to
+    remember it. Beyond that: a plan is allowed to correct the design it
+    came from, deliberately breaking your own code is the only reliable way
+    to find out whether a test was really watching, and making a page update
+    every second surfaced a bug that would otherwise have shown up as "the
+    orders just stopped moving" months later.
+
+
+================================================================================
+13. WHERE IT STANDS NOW
+================================================================================
+
+    Storefront                                    live, 904 tests passing
     Versioned API                                 live, 9 endpoints
     MCP server                                    live, 9 tools
     Agent                                         live, 313 tests passing
     Assistant panel                               live: streaming chat,
                                                   approvals, persistent named
-                                                  history, memory, cards
+                                                  history, memory, cards,
+                                                  and a recovery path on a
+                                                  failed tool call
+    Order lifecycle                               live: simulated, a step a
+                                                  minute, with a countdown
+                                                  and per-order pause
+    Sign-out                                      live: header and profile
     Scorecard                                     m3-mcp, no regressions
 
 Known open items, each recorded in docs/mcp/open-questions.md with an owner,
@@ -610,14 +673,21 @@ plus those M4 added (see docs/PLAN_M4_STOREFRONT.txt):
     * M4 Tasks 6b, 7 and 8 are not built, and "Choose another" from Task 6's
       recovery actions is deliberately deferred to 6b, where the alternatives
       can come from a real tool result rather than a guess.
+    * The agent cannot resolve an order NUMBER to an order id before asking
+      for approval, so "cancel ORD-123" reaches the approval route with a
+      number where an id belongs and the card cannot load its details.
+    * An approval card that cannot load its details offers no Decline, so the
+      turn waits out its five-minute deadline before offering recovery.
 
     IN PLAIN TERMS
     The shop works, it is online, and it now has a working AI assistant: it
     can search, look things up, change the cart, and cancel an order after a
     human clicks to confirm. Conversations are saved, named, listed and
     reopenable, and the assistant remembers what was said earlier in the chat
-    it is in. Known problems are written down rather than forgotten, and the
-    most serious is unchanged: product reviews are written by the public and
-    read by the AI, which is a door nobody has closed yet.
+    it is in. Orders placed from now on walk through their delivery states a
+    step a minute, with a visible countdown and a pause button, and there is
+    finally a way to sign out. Known problems are written down rather than
+    forgotten, and the most serious is unchanged: product reviews are written
+    by the public and read by the AI, which is a door nobody has closed yet.
 
 ================================================================================
