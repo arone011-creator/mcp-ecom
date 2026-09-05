@@ -1293,3 +1293,109 @@ CHAT PERSISTENCE, PHASE 1 - CHRONOLOGICAL TRANSCRIPT    [DONE 2026-09-03]
         because it is the one touching data that already existed. Still
         PENDING, still no panel at all. Rewriting the panel's props did
         not disturb the guarantee that a null clock renders nothing.
+
+  2026-09-05 -- SAYING WHAT THE SITE IS, AND SHOWING THE PRODUCTS
+  (commits bd15eea..a0be1ec)
+
+    Six changes, prompted by using the deployed site rather than by a
+    plan. Four of them are one theme: THE SIGNED-OUT VISITOR WAS SHOWN A
+    PAGE THAT LOOKED SIGNED IN, and every confusion below followed from
+    that.
+
+    A 401 WAS REPORTED AS A TRANSPORT FAILURE. The assistant panel said
+    "Something went wrong reaching the assistant. Try again." for an
+    unauthenticated request. Retrying could never have worked, and the
+    message sent a real investigation to the agent service and the
+    deploy before anyone checked the session. The agent's own logs
+    settled it: no /turn request had arrived at all, and the storefront
+    had answered 401 from the one line in the bridge route that can.
+
+    So the assistant is now HIDDEN ENTIRELY unless a customer is signed
+    in -- a control that can only fail reads as the shop being broken
+    rather than as the visitor being signed out -- and the provider
+    stops ASKING: a signed-out page load was firing /conversations and
+    /conversations/latest, two requests that could only ever be 401s.
+    Hidden while the session is still LOADING too, because showing a
+    button and taking it away is worse than showing it a moment late.
+
+    THE FRONT DOOR IS NOW THE SIGN-IN PAGE. '/' redirects when signed
+    out, carrying a callbackUrl so signing in lands where the visitor
+    was going. The care in that change was matching '/' EXACTLY: the
+    middleware's protected list is matched with startsWith, and every
+    path on this site starts with '/', so adding it there would have
+    gated the whole application -- the /api/v1 surface the agent needs
+    and the sign-in page itself -- and the redirect would have pointed
+    at a page that redirects. Tests pin that /products, /cart, /search,
+    /auth/signin and /api/v1 all stay reachable while signed out. The
+    web service was checked for a healthcheckPath first: it has none, so
+    nothing depended on '/' answering 200.
+
+    Signing out lands on the sign-in page too. That reverses an earlier
+    decision, recorded with its reason -- "signing out is not the start
+    of signing in again" is sound in the abstract and produced exactly
+    this problem in practice.
+
+    THE HOME PAGE STOPPED PRETENDING TO BE A SHOP. It opened with stock
+    storefront copy about incredible products at unbeatable prices, on a
+    site where every product, price, review and order is invented and no
+    payment is ever taken. The metadata carried the same copy, and that
+    mattered MORE rather than less: the description and the link preview
+    are what a search result and a shared link show, reaching people who
+    never see the page. A test guards the disclaimer so the stock copy
+    cannot drift back.
+
+    THREE DISTINCT CAUSES OF A BLANK PRODUCT CARD, and this is the part
+    worth remembering. The card falls back to a grey "No Image"
+    placeholder when a product has no images. That fallback is CORRECT,
+    and it is exactly why all three bugs were invisible: the page
+    renders, nothing errors, no request fails, the cards are simply
+    blank.
+
+      1. NO ROWS IN THE DATABASE. The deployed database had no
+         product_images rows at all. The seed creates them, but it uses
+         create() rather than upsert() and is not run on deploy, and
+         re-running it against production would duplicate every category
+         and product. Fixed by a data migration -- the one path that
+         reaches production automatically, exactly once, through the
+         pipeline that already runs. Purely additive: every statement is
+         an INSERT guarded by NOT EXISTS or an UPDATE that appends a tag
+         it has checked is absent, and a test asserts it contains no
+         DELETE, DROP or TRUNCATE, because it runs unattended.
+
+      2. NO FILE ON DISK. Guarded by a test that asks the filesystem
+         whether every path the seed would write actually resolves. An
+         image path is just a string until something checks.
+
+      3. A QUERY THAT NEVER ASKED. /products showed eleven blank cards
+         while the home page looked perfect, because getProducts
+         included category and not images. Three queries had the gap.
+         Fixed with a STRUCTURAL guard rather than three point fixes:
+         every product.findMany that builds a card must select images.
+         The guard was verified by breaking getProducts again and
+         watching it fail, because a test that has only ever been green
+         proves nothing about what it would catch.
+
+    FEATURED AND NEW ARRIVALS WERE THE SAME QUERY. Both "published,
+    newest first", byte for byte -- so the home page showed one set of
+    products twice under two headings, and had since it shipped. Featured
+    is now a tag, which is editorial and needs no schema change; New
+    Arrivals stays chronological over six new products.
+
+    THE ARTWORK IS DRAWN, NOT PHOTOGRAPHED, and that is the honest
+    choice here: every product is invented, so a stock photograph of a
+    real object would be the one part of the page still pretending
+    otherwise -- against the disclaimer three paragraphs up. What was
+    there before was a coloured rectangle with the product name typed on
+    it: a placeholder wearing an image's filename.
+
+    VERIFIED LIVE 2026-09-05 by reading the DOM rather than eyeballing:
+      * the home page -- 9 images, 0 placeholders, 0 broken, where every
+        one had been a placeholder before;
+      * /products -- all 11 products, 0 placeholders, 0 broken;
+      * Featured and New Arrivals now list DIFFERENT products, checked
+        by pulling the alt text out of each section;
+      * 18 "In Stock" labels, so the new products have inventory rows
+        and are fully added rather than listed but unbuyable;
+      * the gate -- '/' answers 307 to /auth/signin?callbackUrl=%2F
+        while /products, /cart, /search, /auth/signin and
+        /api/v1/products all still answer 200.

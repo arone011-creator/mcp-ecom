@@ -34,7 +34,9 @@ CONTENTS
      9. How to replicate this project from scratch
     10. What we would do differently
     11. What M4 taught - the agent and the assistant panel
-    12. Where it stands now
+    12. What the simulated order lifecycle taught
+    13. What using the deployed site taught
+    14. Where it stands now
 
 
 ================================================================================
@@ -637,13 +639,64 @@ will be wrong later, quietly.
 
 
 ================================================================================
-13. WHERE IT STANDS NOW
+13. WHAT USING THE DEPLOYED SITE TAUGHT
+
+Six changes on 2026-09-05 came from opening the site rather than from a
+plan. None of them was found by a test, and the suite was green
+throughout -- 965 tests by the end of it.
+
+A CORRECT FALLBACK HID THREE DIFFERENT BUGS. A product card shows a grey
+"No Image" placeholder when the product has no images. That behaviour is
+right, and it is precisely why nobody noticed that the deployed database
+had no product_images rows AT ALL: the page rendered, no request failed,
+nothing errored, every card was simply blank. When that was fixed,
+/products stayed blank for a second reason -- a query that selected
+category and not images -- and the fallback hid that one too. Three
+causes, one symptom, no error message between them. The lesson is not
+"remove the fallback"; it is that a graceful degradation deserves the
+same suspicion as a stack trace, because it is designed to look like
+nothing is wrong.
+
+AN ERROR MESSAGE SENT THE INVESTIGATION TO THE WRONG LAYER. The assistant
+reported a 401 as "Something went wrong reaching the assistant. Try
+again." Retrying could never work, and the wording pointed at the network
+and the agent service. Two hours of multi-agent work had just shipped, so
+that is where the search started -- the agent's logs settled it in a
+minute by showing that no request had arrived at all. An error that
+names the wrong cause is worse than one that says nothing, because it is
+CONFIDENT.
+
+THE SIGNED-OUT PAGE LOOKED SIGNED IN, and that was the root of it. A
+visitor with no session saw the full storefront, an assistant button, and
+a header that gave no clue either way. Every confusion above traces back
+to that single ambiguity, and it took four changes to close: hide the
+assistant, stop it making requests, gate the front door, and send
+sign-out somewhere that says plainly what state you are in.
+
+TWO SECTIONS HAD BEEN THE SAME QUERY SINCE THE DAY THEY SHIPPED.
+"Featured Products" and "New Arrivals" were both "published, newest
+first" -- byte for byte -- so the home page showed one set of products
+twice under two headings. Nobody noticed because with five products the
+lists were identical and looked deliberate. It surfaced only when asked
+for something else entirely.
+
+    IN PLAIN TERMS
+    Everything here was found by looking at the thing, not by running
+    the tests, and the tests were passing the whole time. Three separate
+    faults hid behind one tidy "No Image" box, because a fallback that
+    degrades gracefully is designed to look like nothing is wrong. And
+    a confidently wrong error message cost more time than no message
+    would have.
+
+
+================================================================================
+14. WHERE IT STANDS NOW
 ================================================================================
 
-    Storefront                                    live, 904 tests passing
+    Storefront                                    live, 965 tests passing
     Versioned API                                 live, 9 endpoints
     MCP server                                    live, 9 tools
-    Agent                                         live, 313 tests passing
+    Agent                                         live, 357 tests passing
     Assistant panel                               live: streaming chat,
                                                   approvals, persistent named
                                                   history, memory, cards,
@@ -653,6 +706,16 @@ will be wrong later, quietly.
                                                   minute, with a countdown
                                                   and per-order pause
     Sign-out                                      live: header and profile
+    Multi-agent assistant                         live: AGENT_MODE=team, a
+                                                  supervisor delegating to
+                                                  product, order and cart
+                                                  specialists
+    Demo framing                                  live: the home page and its
+                                                  metadata say plainly that
+                                                  nothing here is real
+    Signed-out experience                         live: '/' redirects to sign
+                                                  in, and the assistant is
+                                                  hidden rather than broken
     Scorecard                                     m3-mcp, no regressions
 
 Known open items, each recorded in docs/mcp/open-questions.md with an owner,
@@ -678,6 +741,17 @@ plus those M4 added (see docs/PLAN_M4_STOREFRONT.txt):
       number where an id belongs and the card cannot load its details.
     * An approval card that cannot load its details offers no Decline, so the
       turn waits out its five-minute deadline before offering recovery.
+    * CANCELLING AN ORDER HAS NOT BEEN TRIED LIVE IN MULTI-AGENT MODE.
+      cancel_order now runs inside the order specialist, one level below
+      where the approval pause was proven to work. It is tested in both
+      directions against a scripted model and by nothing else. This is the
+      most important thing left to check by hand.
+    * The agent's routing quality is asserted nowhere. One read path has
+      been walked live; that is an anecdote, not a measurement. It belongs
+      in M4 Task 8's metrics/agent-evals.json, which is not built.
+    * The catalogue, cart and search stay open to a signed-out visitor by
+      design; only '/' is gated. A direct link still shows the shop to
+      somebody with no session.
 
     IN PLAIN TERMS
     The shop works, it is online, and it now has a working AI assistant: it

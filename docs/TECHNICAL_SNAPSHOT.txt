@@ -327,6 +327,27 @@ needing interactivity ship JavaScript to the browser. middleware.ts handles
 route protection, security headers including a Content Security Policy, and an
 HTTP-to-HTTPS upgrade.
 
+SIGNED OUT, THE FRONT DOOR IS THE SIGN-IN PAGE (2026-09-05). '/' redirects
+to /auth/signin with a callbackUrl; the catalogue, cart, search and the
+/api/v1 surface stay open to anyone. '/' is matched EXACTLY rather than by
+prefix -- the protected list beside it uses startsWith, and every path on
+this site starts with '/', so the same entry there would have gated the
+API and the sign-in page itself, leaving a redirect pointing at a page
+that redirects.
+
+The assistant is hidden entirely from a signed-out visitor, and its
+provider makes no requests at all. Before that it offered a button whose
+every capability answers 401, and reported that 401 as "something went
+wrong reaching the assistant" -- a transport failure blaming the network
+for a state the visitor could have fixed by signing in.
+
+THE HOME PAGE SAYS WHAT THIS IS. Every product, price, review and order is
+invented and no payment is ever taken, so the page says so, and so does
+its metadata -- the description and the link preview reach people who
+never see the page at all. Product artwork is DRAWN rather than
+photographed for the same reason: a stock photograph of a real object
+would be the one part of the page still pretending otherwise.
+
 THE ASSISTANT PANEL (M4)
 
 A chat panel on every page, and the routes behind it. Not part of /api/v1:
@@ -473,7 +494,7 @@ TWO TRAPS ALREADY PAID FOR:
 9. TESTING AND THE SCORECARD
 ================================================================================
 
-817 tests across four suites: unit (jsdom), integration (node), 1
+965 tests across four suites: unit (jsdom), integration (node), 1
 accessibility suite (jest-axe), 3 Cypress end-to-end specs.
 
 JSDOM HAS NO LAYOUT ENGINE, and M4 proved what that costs. Two scroll bugs in
@@ -581,7 +602,24 @@ switched off tomorrow, the shop would not notice.
 Honest, not exhaustive. Each of these is a real gap, written down so nobody
 discovers it the hard way.
 
-  * THIS IS A DEMO. No payments, no returns subsystem, no fraud checks.
+  * THIS IS A DEMO. No payments, no returns subsystem, no fraud checks. The
+    home page and its metadata now say so; before 2026-09-05 they carried
+    stock storefront copy about unbeatable prices.
+
+  * A BLANK PRODUCT CARD HAS THREE POSSIBLE CAUSES, and the placeholder
+    fallback hides all of them: no product_images row in the database, no
+    file on disk, or a query that selected category and not images. All
+    three had happened by 2026-09-05 and each now has a guard -- a data
+    migration, a test that asks the filesystem whether every seeded path
+    resolves, and a test that every product.findMany building a card
+    selects images. The fallback is correct, which is exactly why these
+    were invisible: the page renders and nothing errors.
+
+  * PRODUCT DATA REACHES PRODUCTION THROUGH MIGRATIONS, NOT THE SEED. The
+    seed uses create() rather than upsert() and is not run on deploy, so
+    running it against a populated database would duplicate every
+    category and product. Anything that must reach production is written
+    as a guarded, additive migration instead.
 
   * TOKENS CANNOT BE REVOKED (see section 5).
 
