@@ -10,6 +10,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { ToolActivityChip } from '@/components/assistant/tool-activity';
+import { toolLabel } from '@/lib/assistant/tool-labels';
 
 const FAILED = {
   call_id: 'c1',
@@ -98,5 +99,23 @@ describe('ToolActivityChip', () => {
 
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
     expect(document.querySelector('img')).toBeNull();
+  });
+});
+
+describe('toolLabel', () => {
+  it('names the specialists a request is handed to', () => {
+    // The supervisor's tools ARE the specialists, so these arrive through
+    // the same tool_started/tool_completed events as everything else. The
+    // fallback would render "ask product", which is not wrong but reads
+    // like a bug.
+    expect(toolLabel('ask_product')).toBe('Asking the product specialist');
+    expect(toolLabel('ask_order')).toBe('Asking the order specialist');
+    expect(toolLabel('ask_cart')).toBe('Asking the cart specialist');
+  });
+
+  it('still shows an unlabelled tool honestly rather than hiding it', () => {
+    // The fallback is why the storefront rendered multi-agent turns
+    // correctly before these labels existed. It must stay.
+    expect(toolLabel('ask_nobody')).toBe('ask nobody');
   });
 });

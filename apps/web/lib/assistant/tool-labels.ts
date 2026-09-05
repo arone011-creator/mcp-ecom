@@ -20,6 +20,12 @@ const LABELS: Record<string, string> = {
   add_to_cart: 'Adding to your cart',
   remove_from_cart: 'Removing from your cart',
   cancel_order: 'Cancelling an order',
+  // The supervisor's own tools: each specialist is one. These arrive as
+  // ordinary tool events, which is why the multi-agent change needed no
+  // storefront work beyond naming them.
+  ask_product: 'Asking the product specialist',
+  ask_order: 'Asking the order specialist',
+  ask_cart: 'Asking the cart specialist',
 };
 
 export function toolLabel(tool: string): string {
