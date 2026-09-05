@@ -129,6 +129,15 @@ export const getFeaturedProducts = createCachedFunction(
     const products = await prisma.product.findMany({
       where: {
         status: 'PUBLISHED',
+        // CHOSEN, not merely recent. This used to be "newest first" --
+        // byte for byte the same query as getNewProducts below -- so the
+        // home page showed one set of products twice, under "Featured
+        // Products" and again under "New Arrivals".
+        //
+        // A tag rather than a column: it needs no schema change, and the
+        // set of featured products is editorial, which is exactly what a
+        // tag is for.
+        tags: { has: 'featured' },
       },
       include: {
         category: {

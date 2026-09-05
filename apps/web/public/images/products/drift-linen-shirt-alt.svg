@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800" role="img" aria-label="Drift Linen Shirt">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#e0f2fe"/><stop offset="1" stop-color="#f0f9ff"/>
+</linearGradient>
+</defs>
+<rect width="800" height="800" fill="url(#bg)"/>
+<path d="M292 208 L362 176 L400 214 L438 176 L508 208 L556 268 L508 312 L490 296 V584 H310 V296 L292 312 L244 268 Z" fill="#bae6fd"/><path d="M362 176 L400 214 L438 176 L400 200 Z" fill="#0369a1"/><path d="M400 214 V584" stroke="#0369a1" stroke-width="6" opacity="0.6"/><text x="400" y="726" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#0f172a" text-anchor="middle" opacity="0.85">Drift Linen Shirt</text>
+</svg>

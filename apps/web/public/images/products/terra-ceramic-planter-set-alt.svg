@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800" role="img" aria-label="Terra Ceramic Planter Set">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fef3c7"/><stop offset="1" stop-color="#fefce8"/>
+</linearGradient>
+</defs>
+<rect width="800" height="800" fill="url(#bg)"/>
+<path d="M296 400 h208 l-30 200 h-148 Z" fill="#4d7c0f"/><rect x="284" y="372" width="232" height="38" rx="12" fill="#4d7c0f"/><path d="M400 372 C400 280 340 250 306 236 C316 306 350 350 400 372 Z" fill="#b45309"/><path d="M400 372 C400 268 462 244 500 232 C486 300 452 348 400 372 Z" fill="#b45309"/><text x="400" y="726" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#0f172a" text-anchor="middle" opacity="0.85">Terra Ceramic Planter Set</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800" role="img" aria-label="Pulse Fitness Band">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffe4e6"/><stop offset="1" stop-color="#fff1f2"/>
+</linearGradient>
+</defs>
+<rect width="800" height="800" fill="url(#bg)"/>
+<path d="M340 176 h120 l-14 148 h-92 Z" fill="#ffe4e6"/><path d="M354 476 h92 l14 148 h-120 Z" fill="#ffe4e6"/><rect x="304" y="308" width="192" height="184" rx="46" fill="#ffe4e6"/><rect x="330" y="334" width="140" height="132" rx="30" fill="#be123c"/><path d="M356 400 h26 l14 -26 l18 52 l14 -26 h28" fill="none" stroke="#ffe4e6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><text x="400" y="726" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#0f172a" text-anchor="middle" opacity="0.85">Pulse Fitness Band</text>
+</svg>

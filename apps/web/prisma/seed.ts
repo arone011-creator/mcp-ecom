@@ -120,7 +120,7 @@ async function main() {
       categoryId: smartphonesCategory.id,
       status: ProductStatus.PUBLISHED,
       sku: 'IPH15PRO-128-NT',
-      tags: ['smartphone', 'apple', 'ios', 'premium'],
+      tags: ['smartphone', 'apple', 'ios', 'premium', 'featured'],
       seoTitle: 'iPhone 15 Pro - Premium Smartphone | Your Store',
       seoDescription:
         'Get the latest iPhone 15 Pro with titanium design and advanced camera system.',
@@ -137,7 +137,7 @@ async function main() {
       categoryId: laptopsCategory.id,
       status: ProductStatus.PUBLISHED,
       sku: 'MBA-M2-256-SG',
-      tags: ['laptop', 'apple', 'macos', 'm2'],
+      tags: ['laptop', 'apple', 'macos', 'm2', 'featured'],
       seoTitle: 'MacBook Air M2 - Ultra-thin Laptop | Your Store',
       seoDescription:
         'Experience incredible performance with the MacBook Air M2.',
@@ -154,7 +154,7 @@ async function main() {
       categoryId: smartphonesCategory.id,
       status: ProductStatus.PUBLISHED,
       sku: 'SGS24-256-PH',
-      tags: ['smartphone', 'samsung', 'android', 'galaxy'],
+      tags: ['smartphone', 'samsung', 'android', 'galaxy', 'featured'],
       seoTitle: 'Samsung Galaxy S24 - AI-Powered Smartphone | Your Store',
       seoDescription:
         'Discover the Samsung Galaxy S24 with AI-powered features.',
@@ -171,7 +171,7 @@ async function main() {
       categoryId: mensClothingCategory.id,
       status: ProductStatus.PUBLISHED,
       sku: 'TSHIRT-COT-M-BLU',
-      tags: ['clothing', 'cotton', 'casual', 'organic'],
+      tags: ['clothing', 'cotton', 'casual', 'organic', 'featured'],
       seoTitle: 'Premium Cotton T-Shirt - Organic & Comfortable | Your Store',
       seoDescription:
         'Shop our premium organic cotton t-shirt for ultimate comfort.',
@@ -188,10 +188,115 @@ async function main() {
       categoryId: electronicsCategory.id,
       status: ProductStatus.PUBLISHED,
       sku: 'WH-NC-BLK-BT',
-      tags: ['headphones', 'wireless', 'bluetooth', 'noise-cancelling'],
+      tags: ['headphones', 'wireless', 'bluetooth', 'noise-cancelling', 'featured'],
       seoTitle: 'Wireless Noise-Cancelling Headphones | Your Store',
       seoDescription:
         'Premium wireless headphones with active noise cancellation.',
+    },
+    // NEW ARRIVALS. Invented, like everything else here -- the names are
+    // deliberately not real brands, because a dummy catalogue that reads
+    // as real is what the home page's disclaimer exists to prevent.
+    {
+      name: 'Aurora Smart Speaker',
+      slug: 'aurora-smart-speaker',
+      description: 'Room-filling sound with a voice assistant built in.',
+      content:
+        'The Aurora fills a room from a single driver array and answers when spoken to. Six far-field microphones, a fabric shell, and a light ring that glows while it is listening.',
+      price: 89.99,
+      comparePrice: 109.99,
+      costPrice: 52.0,
+      categoryId: electronicsCategory.id,
+      status: ProductStatus.PUBLISHED,
+      sku: 'AUR-SPK-01',
+      tags: ['speaker', 'audio', 'smart-home', 'new'],
+      seoTitle: 'Aurora Smart Speaker | MCP Commerce',
+      seoDescription:
+        'A demo product. Room-filling sound with a voice assistant built in.',
+    },
+    {
+      name: 'Nimbus Mechanical Keyboard',
+      slug: 'nimbus-mechanical-keyboard',
+      description: 'A quiet mechanical keyboard with a low profile.',
+      content:
+        'Tactile switches damped for an open-plan office, an aluminium plate, and a low-profile case that keeps your wrists flat. Wired or wireless.',
+      price: 129.99,
+      comparePrice: 159.99,
+      costPrice: 74.0,
+      categoryId: electronicsCategory.id,
+      status: ProductStatus.PUBLISHED,
+      sku: 'NIM-KBD-01',
+      tags: ['keyboard', 'desk', 'mechanical', 'new'],
+      seoTitle: 'Nimbus Mechanical Keyboard | MCP Commerce',
+      seoDescription:
+        'A demo product. A quiet mechanical keyboard with a low profile.',
+    },
+    {
+      name: 'Pulse Fitness Band',
+      slug: 'pulse-fitness-band',
+      description: 'A slim tracker for steps, sleep and heart rate.',
+      content:
+        'Seven days on a charge, a screen you can read outdoors, and a strap light enough to forget you are wearing. Tracks steps, sleep stages and heart rate.',
+      price: 79.99,
+      comparePrice: 99.99,
+      costPrice: 41.0,
+      categoryId: electronicsCategory.id,
+      status: ProductStatus.PUBLISHED,
+      sku: 'PLS-BND-01',
+      tags: ['fitness', 'wearable', 'health', 'new'],
+      seoTitle: 'Pulse Fitness Band | MCP Commerce',
+      seoDescription:
+        'A demo product. A slim tracker for steps, sleep and heart rate.',
+    },
+    {
+      name: 'Terra Ceramic Planter Set',
+      slug: 'terra-ceramic-planter-set',
+      description: 'Three glazed planters with drainage trays.',
+      content:
+        'Small, medium and large, thrown in stoneware and glazed in a warm matte clay. Each sits on its own drainage tray, so they can go straight onto a windowsill.',
+      price: 34.99,
+      comparePrice: 44.99,
+      costPrice: 16.0,
+      categoryId: homeCategory.id,
+      status: ProductStatus.PUBLISHED,
+      sku: 'TRA-PLT-03',
+      tags: ['garden', 'ceramic', 'home', 'new'],
+      seoTitle: 'Terra Ceramic Planter Set | MCP Commerce',
+      seoDescription:
+        'A demo product. Three glazed planters with drainage trays.',
+    },
+    {
+      name: 'Halo Desk Lamp',
+      slug: 'halo-desk-lamp',
+      description: 'An adjustable desk lamp with warm and cool light.',
+      content:
+        'A weighted base, an arm that stays where it is put, and a dial that runs from warm evening light to daylight. Dimmable to almost nothing.',
+      price: 44.99,
+      comparePrice: 54.99,
+      costPrice: 21.0,
+      categoryId: homeCategory.id,
+      status: ProductStatus.PUBLISHED,
+      sku: 'HAL-LMP-01',
+      tags: ['lighting', 'desk', 'home', 'new'],
+      seoTitle: 'Halo Desk Lamp | MCP Commerce',
+      seoDescription:
+        'A demo product. An adjustable desk lamp with warm and cool light.',
+    },
+    {
+      name: 'Drift Linen Shirt',
+      slug: 'drift-linen-shirt',
+      description: 'A relaxed linen shirt for warm weather.',
+      content:
+        'Washed linen that softens with every wash, cut loose through the body, with a camp collar that sits flat whether it is buttoned or not.',
+      price: 59.99,
+      comparePrice: 79.99,
+      costPrice: 27.0,
+      categoryId: mensClothingCategory.id,
+      status: ProductStatus.PUBLISHED,
+      sku: 'DRF-SHT-01',
+      tags: ['clothing', 'linen', 'summer', 'new'],
+      seoTitle: 'Drift Linen Shirt | MCP Commerce',
+      seoDescription:
+        'A demo product. A relaxed linen shirt for warm weather.',
     },
   ];
 
@@ -216,6 +321,30 @@ async function main() {
     'wireless-headphones': [
       '/images/products/wireless-headphones.svg',
       '/images/products/wireless-headphones-alt.svg',
+    ],
+    'aurora-smart-speaker': [
+      '/images/products/aurora-smart-speaker.svg',
+      '/images/products/aurora-smart-speaker-alt.svg',
+    ],
+    'nimbus-mechanical-keyboard': [
+      '/images/products/nimbus-mechanical-keyboard.svg',
+      '/images/products/nimbus-mechanical-keyboard-alt.svg',
+    ],
+    'pulse-fitness-band': [
+      '/images/products/pulse-fitness-band.svg',
+      '/images/products/pulse-fitness-band-alt.svg',
+    ],
+    'terra-ceramic-planter-set': [
+      '/images/products/terra-ceramic-planter-set.svg',
+      '/images/products/terra-ceramic-planter-set-alt.svg',
+    ],
+    'halo-desk-lamp': [
+      '/images/products/halo-desk-lamp.svg',
+      '/images/products/halo-desk-lamp-alt.svg',
+    ],
+    'drift-linen-shirt': [
+      '/images/products/drift-linen-shirt.svg',
+      '/images/products/drift-linen-shirt-alt.svg',
     ],
   };
 

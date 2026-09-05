@@ -1,5 +1,9 @@
-<svg width="800" height="800" xmlns="http://www.w3.org/2000/svg">
-  <rect width="800" height="800" fill="#8B8B8B"/>
-  <text x="50%" y="45%" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">MacBook Air M2</text>
-  <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="32" fill="#e0e0e0" text-anchor="middle" dominant-baseline="middle">Thin &amp; Light</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800" role="img" aria-label="MacBook Air M2">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#eef2f7"/><stop offset="1" stop-color="#dbe3ec"/>
+</linearGradient>
+</defs>
+<rect width="800" height="800" fill="url(#bg)"/>
+<rect x="228" y="212" width="344" height="230" rx="16" fill="#334155"/><rect x="250" y="234" width="300" height="186" rx="8" fill="#93c5fd"/><path d="M186 456 h428 l38 62 H148 Z" fill="#334155"/><rect x="330" y="474" width="140" height="12" rx="6" fill="#93c5fd"/><text x="400" y="726" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#0f172a" text-anchor="middle" opacity="0.85">MacBook Air M2</text>
 </svg>
