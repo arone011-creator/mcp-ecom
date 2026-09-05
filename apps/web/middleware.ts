@@ -8,8 +8,22 @@ const secret = process.env.NEXTAUTH_SECRET;
 // Protected admin routes
 const adminRoutes = ['/admin'];
 
-// Routes that require authentication
+// Routes that require authentication. Matched by PREFIX.
 const protectedRoutes = ['/profile', '/orders'];
+
+// Paths that require authentication, matched EXACTLY.
+//
+// '/' cannot go in the list above. That one is matched with startsWith,
+// and every path on this site starts with '/' -- so putting it there
+// would gate the entire application, the API routes and the sign-in page
+// included, and the sign-in redirect would point at a page that
+// redirects.
+//
+// The home page is gated at all because the site's default URL used to
+// show the storefront to anyone: a signed-out visitor landed on a page
+// that looked exactly like a working, signed-in shop, with nothing
+// telling them which they were.
+const protectedExactRoutes = ['/'];
 
 // Public routes that redirect authenticated users
 const authRoutes = ['/auth/signin', '/auth/signup'];
@@ -31,9 +45,9 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = adminRoutes.some(route => pathname.startsWith(route));
 
   // Check if the current route requires authentication
-  const isProtectedRoute = protectedRoutes.some(route =>
-    pathname.startsWith(route)
-  );
+  const isProtectedRoute =
+    protectedRoutes.some(route => pathname.startsWith(route)) ||
+    protectedExactRoutes.includes(pathname);
 
   // Check if the current route is an auth route
   const isAuthRoute = authRoutes.some(route => pathname.startsWith(route));

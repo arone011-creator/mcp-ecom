@@ -50,7 +50,11 @@ describe('Authentication Integration', () => {
     it('should allow access to public routes', async () => {
       mockGetToken.mockResolvedValue(null);
 
-      const request = new NextRequest('http://localhost:3000/');
+      // NOT '/' any more. The home page is gated as of 2026-09-05, so a
+      // signed-out visitor is sent to sign in rather than shown a shop
+      // that looks signed in. The catalogue stays open to anyone; see
+      // middleware-home-gate.test.ts for the full rule.
+      const request = new NextRequest('http://localhost:3000/products');
       const response = await middleware(request);
 
       expect(response).toBeDefined();
@@ -324,7 +328,9 @@ describe('Authentication Integration', () => {
     it('should add security headers to responses', async () => {
       mockGetToken.mockResolvedValue(null);
 
-      const request = new NextRequest('http://localhost:3000/');
+      // Any ungated path will do; headers are set on the response, not
+      // on a redirect. '/' now redirects, and a redirect carries none.
+      const request = new NextRequest('http://localhost:3000/products');
       const response = await middleware(request);
 
       expect(response.headers.get('X-Frame-Options')).toBe('DENY');
@@ -339,7 +345,7 @@ describe('Authentication Integration', () => {
     it('should add CSP headers with correct directives', async () => {
       mockGetToken.mockResolvedValue(null);
 
-      const request = new NextRequest('http://localhost:3000/');
+      const request = new NextRequest('http://localhost:3000/products');
       const response = await middleware(request);
 
       const csp = response.headers.get('Content-Security-Policy');
